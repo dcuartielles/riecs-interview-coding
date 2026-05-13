@@ -1,5 +1,6 @@
 """Streamlit UI for the offline interview analysis pipeline."""
 
+import base64
 import csv
 import io
 import json
@@ -12,14 +13,196 @@ from pathlib import Path
 import streamlit as st
 import yaml
 
-INSTALL_DIR = Path(__file__).parent
+INSTALL_DIR  = Path(__file__).parent
 PIPELINE_DIR = INSTALL_DIR / "pipeline"
+ASSETS_DIR   = INSTALL_DIR / "assets"
 sys.path.insert(0, str(PIPELINE_DIR))
 
 from anonymise import anonymise_transcript  # noqa: E402
 from analyse import summarise, extract_themes, analyse_sentiment  # noqa: E402
 from compare import build_corpus_comparison  # noqa: E402
 
+
+# ── RIECS brand CSS ───────────────────────────────────────────────────────────
+
+_RIECS_CSS = """
+<style>
+:root {
+    --navy:   #2c324c;
+    --steel:  #648a9e;
+    --sage:   #85ab86;
+    --teal:   #376782;
+    --cream:  #f5f2ea;
+    --white:  #ffffff;
+    --muted:  #7a8a9a;
+    --border: #dde4ea;
+}
+
+/* ── App shell ── */
+.stApp { background-color: var(--cream); }
+.stApp > header { background-color: var(--navy) !important; }
+.stApp > header * { color: #b0c4d0 !important; }
+[data-testid="stToolbar"] { background: var(--navy) !important; }
+
+/* ── Sidebar ── */
+[data-testid="stSidebar"] {
+    background-color: var(--white) !important;
+    border-right: 1px solid var(--border);
+}
+[data-testid="stSidebar"] h1,
+[data-testid="stSidebar"] h2,
+[data-testid="stSidebar"] h3 { color: var(--navy) !important; }
+[data-testid="stSidebar"] label {
+    font-size: 0.8rem !important;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--steel) !important;
+    font-weight: 600;
+}
+[data-testid="stSidebar"] hr { border-color: var(--border) !important; }
+
+/* ── Headings ── */
+h1 { color: var(--navy) !important; }
+h2 {
+    color: var(--navy) !important;
+    border-bottom: 2px solid var(--border);
+    padding-bottom: 0.4rem;
+    margin-bottom: 1rem;
+}
+h3 { color: var(--navy) !important; }
+
+/* ── Primary button ── */
+[data-testid="stBaseButton-primary"], button[kind="primary"] {
+    background-color: var(--teal) !important;
+    color: var(--white) !important;
+    border: none !important;
+    border-radius: 6px !important;
+    font-weight: 600 !important;
+    transition: filter 0.15s;
+}
+[data-testid="stBaseButton-primary"]:hover, button[kind="primary"]:hover {
+    filter: brightness(0.88) !important;
+    border: none !important;
+}
+[data-testid="stBaseButton-primary"]:disabled,
+button[kind="primary"]:disabled { opacity: 0.45 !important; }
+
+/* ── Download button ── */
+[data-testid="stDownloadButton"] button {
+    background-color: var(--sage) !important;
+    color: var(--white) !important;
+    border: none !important;
+    border-radius: 6px !important;
+    font-weight: 600 !important;
+}
+[data-testid="stDownloadButton"] button:hover { filter: brightness(0.90) !important; }
+
+/* ── Progress bar ── */
+[data-testid="stProgressBar"] > div {
+    background-color: var(--border) !important;
+    border-radius: 99px !important;
+    height: 10px !important;
+}
+[data-testid="stProgressBar"] > div > div {
+    background-color: var(--teal) !important;
+    border-radius: 99px !important;
+    transition: width 0.3s ease;
+}
+
+/* ── Tabs ── */
+[data-baseweb="tab-list"] {
+    background: transparent !important;
+    border-bottom: 2px solid var(--border) !important;
+    gap: 0 !important;
+}
+[data-baseweb="tab"] {
+    color: var(--muted) !important;
+    font-weight: 600 !important;
+    font-size: 0.9rem !important;
+    background: transparent !important;
+    border-bottom: 3px solid transparent !important;
+    padding: 0.5rem 1.25rem !important;
+}
+[aria-selected="true"][data-baseweb="tab"] {
+    color: var(--teal) !important;
+    border-bottom: 3px solid var(--teal) !important;
+}
+[data-baseweb="tab-highlight"] { display: none !important; }
+
+/* ── Expanders ── */
+[data-testid="stExpander"] {
+    background: var(--white) !important;
+    border-radius: 12px !important;
+    box-shadow: 0 2px 8px rgba(44,50,76,0.07) !important;
+    border: 1px solid var(--border) !important;
+    margin-bottom: 0.5rem;
+}
+[data-testid="stExpander"] summary {
+    color: var(--navy) !important;
+    font-weight: 600 !important;
+}
+
+/* ── Metrics ── */
+[data-testid="stMetricValue"] {
+    color: var(--navy) !important;
+    font-weight: 700 !important;
+    font-size: 1.75rem !important;
+}
+[data-testid="stMetricLabel"] {
+    font-size: 0.75rem !important;
+    text-transform: uppercase !important;
+    letter-spacing: 0.06em !important;
+    color: var(--steel) !important;
+}
+
+/* ── Dataframe ── */
+[data-testid="stDataFrame"] {
+    border-radius: 8px;
+    overflow: hidden;
+    box-shadow: 0 2px 8px rgba(44,50,76,0.07);
+}
+
+/* ── Selectbox ── */
+[data-testid="stSelectbox"] [data-baseweb="select"] > div:first-child {
+    background: var(--white) !important;
+    border-color: var(--border) !important;
+    border-radius: 6px !important;
+}
+
+/* ── File uploader ── */
+[data-testid="stFileUploader"] section {
+    border: 2px dashed var(--border) !important;
+    border-radius: 8px !important;
+    background: var(--white) !important;
+}
+[data-testid="stFileUploader"] section:focus-within,
+[data-testid="stFileUploader"] section:hover {
+    border-color: var(--teal) !important;
+}
+
+/* ── Alert / info banners ── */
+[data-testid="stAlert"] {
+    border-radius: 8px !important;
+    border-left: 4px solid var(--steel) !important;
+}
+
+/* ── Caption ── */
+[data-testid="stCaptionContainer"] {
+    color: var(--muted) !important;
+    font-size: 0.8rem !important;
+}
+
+/* ── Blockquotes ── */
+blockquote {
+    border-left: 4px solid var(--border);
+    padding: 0.5rem 1rem;
+    background: #f0f4f7;
+    border-radius: 0 6px 6px 0;
+    color: var(--steel);
+    margin: 0.5rem 0;
+}
+</style>
+"""
 
 # ── Codebook spreadsheet helpers ─────────────────────────────────────────────
 
@@ -80,7 +263,6 @@ def codebook_rows_to_yaml(
             entry["label"] = row[label_col]
         if row.get(desc_col):
             entry["description"] = row[desc_col]
-        # carry remaining non-empty columns through so the LLM sees full context
         for k, v in row.items():
             if k not in (code_col, label_col, desc_col) and v:
                 entry[k] = v
@@ -196,7 +378,7 @@ def run_pipeline(
     corpus_dir = run_dir / "corpus"
     corpus_dir.mkdir(exist_ok=True)
     summary_files = sorted((run_dir / "analysis").glob("*_summary.json"))
-    theme_files = sorted((run_dir / "analysis").glob("*_themes.json"))
+    theme_files   = sorted((run_dir / "analysis").glob("*_themes.json"))
     corpus = build_corpus_comparison(summary_files, theme_files, cfg)
     (corpus_dir / "themes_matrix.json").write_text(
         json.dumps(corpus["matrix"], ensure_ascii=False, indent=2), encoding="utf-8"
@@ -208,37 +390,21 @@ def run_pipeline(
     return run_dir, {**results, "_corpus": corpus}
 
 
-# ── Report ────────────────────────────────────────────────────────────────────
+# ── HTML report ───────────────────────────────────────────────────────────────
 
-_CSS = """
-body{font-family:system-ui,sans-serif;max-width:960px;margin:40px auto;padding:0 24px;
-     color:#222;line-height:1.6}
-h1{color:#1a1a2e}
-h2{color:#16213e;border-bottom:2px solid #ddd;padding-bottom:6px;margin-top:40px}
-h3{color:#333;margin-top:28px}
-h4{color:#444;margin-top:20px}
-blockquote{margin:8px 0;padding:8px 16px;border-left:4px solid #ccc;
-           color:#555;background:#fafafa}
-table{border-collapse:collapse;width:100%;margin:12px 0;font-size:.9em}
-th{background:#f0f0f0;text-align:left;padding:6px 10px;border:1px solid #ccc}
-td{padding:6px 10px;border:1px solid #ddd}
-.badge{display:inline-block;padding:2px 10px;border-radius:10px;
-       font-size:.8em;font-weight:600}
-.positive{background:#d4edda;color:#155724}
-.negative{background:#f8d7da;color:#721c24}
-.neutral{background:#e2e3e5;color:#383d41}
-.mixed{background:#fff3cd;color:#856404}
-.meta{color:#666;font-size:.85em}
-code{background:#f4f4f4;padding:1px 5px;border-radius:3px}
-"""
+def _logo_data_uri() -> str:
+    p = ASSETS_DIR / "riecs-glyph.png"
+    if p.exists():
+        return "data:image/png;base64," + base64.b64encode(p.read_bytes()).decode()
+    return ""
 
 
 def _md_to_html(text: str) -> str:
     text = re.sub(r"^### (.+)$", r"<h4>\1</h4>", text, flags=re.MULTILINE)
-    text = re.sub(r"^## (.+)$", r"<h3>\1</h3>", text, flags=re.MULTILINE)
-    text = re.sub(r"^# (.+)$", r"<h2>\1</h2>", text, flags=re.MULTILINE)
+    text = re.sub(r"^## (.+)$",  r"<h3>\1</h3>",  text, flags=re.MULTILINE)
+    text = re.sub(r"^# (.+)$",   r"<h2>\1</h2>",   text, flags=re.MULTILINE)
     text = re.sub(r"\*\*(.+?)\*\*", r"<strong>\1</strong>", text)
-    text = re.sub(r"\*(.+?)\*", r"<em>\1</em>", text)
+    text = re.sub(r"\*(.+?)\*",     r"<em>\1</em>",         text)
     lines = text.split("\n")
     out, in_list = [], False
     for line in lines:
@@ -259,17 +425,69 @@ def _md_to_html(text: str) -> str:
     return f"<p>{text}</p>"
 
 
+_REPORT_CSS = """
+:root{--navy:#2c324c;--steel:#648a9e;--sage:#85ab86;--teal:#376782;
+      --cream:#f5f2ea;--white:#fff;--muted:#7a8a9a;--border:#dde4ea}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:system-ui,-apple-system,sans-serif;background:var(--cream);
+     color:var(--navy);line-height:1.6;min-height:100vh}
+.page{max-width:960px;margin:0 auto;padding:2rem 1.5rem}
+.report-header{display:flex;align-items:center;gap:1rem;background:var(--navy);
+  color:#fff;padding:1rem 1.5rem;border-radius:12px;margin-bottom:1.5rem}
+.report-header img{height:3rem;width:auto}
+.report-header h1{font-size:1.3rem;color:#fff;margin:0}
+.report-header .sub{font-size:0.78rem;text-transform:uppercase;
+  letter-spacing:0.08em;color:#648a9e;margin-top:0.15rem}
+.report-meta{font-size:0.78rem;color:var(--muted);margin-bottom:2rem}
+h2{color:var(--navy);border-bottom:2px solid var(--border);
+   padding-bottom:0.4rem;margin:2rem 0 1rem}
+h3{color:var(--navy);margin:1.5rem 0 0.5rem}
+h4{color:var(--steel);margin:1rem 0 0.4rem;font-size:0.85rem;
+   text-transform:uppercase;letter-spacing:0.05em}
+.card{background:var(--white);border-radius:12px;padding:1.5rem;
+  box-shadow:0 2px 8px rgba(44,50,76,0.07);margin-bottom:1.5rem;
+  border-top:4px solid var(--teal)}
+blockquote{margin:.5rem 0;padding:.5rem 1rem;
+  border-left:4px solid var(--border);background:#f0f4f7;
+  border-radius:0 6px 6px 0;color:var(--steel);font-size:.9rem}
+ul{padding-left:1.5rem;margin:.4rem 0}li{margin:.25rem 0}
+table{border-collapse:collapse;width:100%;margin:.75rem 0;font-size:.88rem;
+  background:var(--white);border-radius:8px;overflow:hidden;
+  box-shadow:0 2px 8px rgba(44,50,76,0.07)}
+th{background:#f0f4f7;text-align:left;padding:.55rem .75rem;
+   border:1px solid var(--border);font-size:.78rem;
+   text-transform:uppercase;letter-spacing:.05em;color:var(--steel)}
+td{padding:.5rem .75rem;border:1px solid var(--border)}
+.badge{display:inline-block;padding:2px 10px;border-radius:99px;
+  font-size:.78rem;font-weight:600}
+.tone-positive{background:#d4ead5;color:#1a5c2a}
+.tone-negative{background:#fde8e8;color:#7a2020}
+.tone-neutral{background:var(--border);color:var(--muted)}
+.tone-mixed{background:#fef6e8;color:#7a4a10}
+.freq-high{background:#e8f0f5;color:var(--teal)}
+.freq-medium{background:#f0f4f7;color:var(--steel)}
+.freq-low{background:#f5f7f9;color:var(--muted)}
+code{background:#f0f4f7;padding:1px 5px;border-radius:3px;font-size:.85em}
+.meta{color:var(--muted);font-size:.8rem}
+a{color:var(--teal);text-decoration:none}
+"""
+
+
 def generate_html_report(run_dir: Path, results: dict) -> str:
-    now = datetime.now().strftime("%Y-%m-%d %H:%M")
-    corpus = results.get("_corpus", {})
+    now      = datetime.now().strftime("%Y-%m-%d %H:%M")
+    corpus   = results.get("_corpus", {})
     interviews = {k: v for k, v in results.items() if k != "_corpus"}
+    logo_uri = _logo_data_uri()
+    logo_img = f'<img src="{logo_uri}" alt="RIECS">' if logo_uri else ""
 
     parts = [
         f'<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">'
         f'<title>Interview Analysis Report — {now}</title>'
-        f'<style>{_CSS}</style></head><body>'
-        f'<h1>Interview Analysis Report</h1>'
-        f'<p class="meta">Generated {now} &mdash; {len(interviews)} interview(s)'
+        f'<style>{_REPORT_CSS}</style></head><body><div class="page">'
+        f'<div class="report-header">{logo_img}'
+        f'<div><h1>Interview Analysis Report</h1>'
+        f'<div class="sub">RIECS — offline analysis</div></div></div>'
+        f'<p class="report-meta">Generated {now} &mdash; {len(interviews)} interview(s)'
         f' &mdash; output: {run_dir}</p>'
     ]
 
@@ -278,7 +496,7 @@ def generate_html_report(run_dir: Path, results: dict) -> str:
 
     matrix_codes = corpus.get("matrix", {}).get("codes", {})
     if matrix_codes:
-        iids = sorted({iid for c in matrix_codes.values() for iid in c["by_interview"]})
+        iids   = sorted({iid for c in matrix_codes.values() for iid in c["by_interview"]})
         header = (
             "<tr><th>Theme</th><th>Code</th>"
             + "".join(f"<th>{i}</th>" for i in iids)
@@ -286,21 +504,24 @@ def generate_html_report(run_dir: Path, results: dict) -> str:
         )
         rows = "".join(
             f'<tr><td>{info["label"]}</td><td><code>{code}</code></td>'
-            + "".join(f'<td>{info["by_interview"].get(i, "&mdash;")}</td>' for i in iids)
+            + "".join(f'<td>{info["by_interview"].get(i,"&mdash;")}</td>' for i in iids)
             + f'<td>{info["total_interviews"]}</td></tr>'
             for code, info in matrix_codes.items()
         )
         parts.append(f'<h2>Theme Matrix</h2><table>{header}{rows}</table>')
 
     for iid, data in interviews.items():
-        parts.append(f'<h2>Interview: {iid}</h2>')
+        parts.append(
+            f'<div class="card">'
+            f'<h2 style="border:none;margin-top:0">Interview: {iid}</h2>'
+        )
 
         s = data.get("summary", {})
         if s:
             parts.append(
                 f'<h3>Summary</h3>'
-                f'<p><strong>Estimated duration:</strong> {s.get("estimated_duration_min", "&mdash;")} min'
-                f' &nbsp;|&nbsp; <strong>Word count:</strong> {s.get("word_count", "&mdash;")}</p>'
+                f'<p><strong>Estimated duration:</strong> {s.get("estimated_duration_min","&mdash;")} min'
+                f' &nbsp;|&nbsp; <strong>Word count:</strong> {s.get("word_count","&mdash;")}</p>'
             )
             if s.get("key_topics"):
                 items = "".join(
@@ -316,14 +537,15 @@ def generate_html_report(run_dir: Path, results: dict) -> str:
                 quotes = "".join(f"<blockquote>{q}</blockquote>" for q in s["notable_quotes"])
                 parts.append(f'<h4>Notable quotes</h4>{quotes}')
             if s.get("methodological_notes"):
-                parts.append(f'<p><em>Methodological notes: {s["methodological_notes"]}</em></p>')
+                parts.append(f'<p class="meta"><em>{s["methodological_notes"]}</em></p>')
 
         t = data.get("themes", {})
         if t.get("themes"):
             parts.append("<h3>Themes</h3>")
             for theme in t["themes"]:
-                sub = (f'<p class="meta">Sub-themes: {", ".join(theme["sub_themes"])}</p>'
-                       if theme.get("sub_themes") else "")
+                freq  = theme.get("frequency", "")
+                sub   = (f'<p class="meta">Sub-themes: {", ".join(theme["sub_themes"])}</p>'
+                         if theme.get("sub_themes") else "")
                 quotes = "".join(
                     f"<blockquote>{q}</blockquote>"
                     for q in theme.get("supporting_quotes", [])[:3]
@@ -331,44 +553,62 @@ def generate_html_report(run_dir: Path, results: dict) -> str:
                 parts.append(
                     f'<h4>{theme.get("label", theme.get("code",""))}'
                     f' <code>{theme.get("code","")}</code>'
-                    f' <span class="meta">({theme.get("frequency","")})</span></h4>'
+                    f' <span class="badge freq-{freq}">{freq}</span></h4>'
                     f'<p>{theme.get("description","")}</p>{sub}{quotes}'
                 )
             if t.get("new_codes_proposed"):
-                parts.append(f'<p><em>New codes proposed: {", ".join(t["new_codes_proposed"])}</em></p>')
+                parts.append(
+                    f'<p class="meta"><em>New codes proposed: '
+                    f'{", ".join(t["new_codes_proposed"])}</em></p>'
+                )
 
         sent = data.get("sentiment", {})
         if sent:
             tone = sent.get("overall_tone", "neutral")
             parts.append(
                 f'<h3>Sentiment</h3>'
-                f'<p>Overall tone: <span class="badge {tone}">{tone}</span>'
+                f'<p>Overall tone: <span class="badge tone-{tone}">{tone}</span>'
                 f' &nbsp; Confidence: {sent.get("confidence","&mdash;")}'
                 f' &nbsp; Register: {sent.get("emotional_register","&mdash;")}</p>'
             )
             if sent.get("topic_sentiments"):
-                rows = "".join(
+                ts_rows = "".join(
                     f'<tr><td>{ts.get("topic","")}</td>'
-                    f'<td><span class="badge {ts.get("tone","neutral")}">{ts.get("tone","")}</span></td>'
+                    f'<td><span class="badge tone-{ts.get("tone","neutral")}">'
+                    f'{ts.get("tone","")}</span></td>'
                     f'<td>{ts.get("notes","")}</td></tr>'
                     for ts in sent["topic_sentiments"]
                 )
                 parts.append(
-                    f'<table><tr><th>Topic</th><th>Tone</th><th>Notes</th></tr>{rows}</table>'
+                    f'<table><tr><th>Topic</th><th>Tone</th><th>Notes</th></tr>'
+                    f'{ts_rows}</table>'
                 )
             if sent.get("notable_passages"):
-                passages = "".join(f"<blockquote>{p}</blockquote>" for p in sent["notable_passages"])
+                passages = "".join(
+                    f"<blockquote>{p}</blockquote>" for p in sent["notable_passages"]
+                )
                 parts.append(f'<h4>Notable passages</h4>{passages}')
 
-    parts.append("</body></html>")
+        parts.append("</div>")
+
+    parts.append("</div></body></html>")
     return "\n".join(parts)
 
 
 # ── Streamlit app ─────────────────────────────────────────────────────────────
 
-st.set_page_config(page_title="Interview Analyser", layout="wide")
-st.title("Interview Analyser")
-st.caption("Fully offline — all processing happens on this machine.")
+_favicon = ASSETS_DIR / "favicon.ico"
+st.set_page_config(
+    page_title="Interview Analyser — RIECS",
+    page_icon=str(_favicon) if _favicon.exists() else "📋",
+    layout="wide",
+)
+
+st.markdown(_RIECS_CSS, unsafe_allow_html=True)
+
+_glyph = ASSETS_DIR / "riecs-glyph.png"
+if _glyph.exists():
+    st.logo(str(_glyph))
 
 for key, default in [
     ("results", None), ("run_dir", None), ("running", False),
@@ -378,10 +618,12 @@ for key, default in [
     if key not in st.session_state:
         st.session_state[key] = default
 
+# ── Sidebar ───────────────────────────────────────────────────────────────────
+
 with st.sidebar:
     st.header("Inputs")
     uploaded_txts = st.file_uploader(
-        "Interview transcripts (.txt, .docx)",
+        "Interview transcripts",
         type=["txt", "docx"],
         accept_multiple_files=True,
         help="Drag and drop plain-text or Word transcript files.",
@@ -390,20 +632,18 @@ with st.sidebar:
     uploaded_codebook = st.file_uploader(
         "Labelbook — optional",
         type=["xlsx", "xls", "csv", "yaml", "yml"],
-        help="Excel, CSV, or YAML codebook for guided theme coding. Leave blank for open coding.",
+        help="Excel, CSV, or YAML codebook for guided theme coding.",
     )
 
-    # Parse spreadsheet on upload and show column mapping
     if uploaded_codebook:
         ext = Path(uploaded_codebook.name).suffix.lower()
         if ext in (".xlsx", ".xls", ".csv"):
             file_bytes = uploaded_codebook.read()
             rows, headers = parse_spreadsheet(file_bytes, uploaded_codebook.name)
             if rows and headers:
-                # Re-detect defaults only when a new file is uploaded
                 if st.session_state.cb_headers != headers:
-                    st.session_state.cb_rows = rows
-                    st.session_state.cb_headers = headers
+                    st.session_state.cb_rows      = rows
+                    st.session_state.cb_headers   = headers
                     st.session_state.cb_code_col  = headers[_auto_detect(headers, "code")]
                     st.session_state.cb_label_col = headers[_auto_detect(headers, "label")]
                     st.session_state.cb_desc_col  = headers[_auto_detect(headers, "description")]
@@ -432,13 +672,11 @@ with st.sidebar:
             else:
                 st.warning("Could not read rows from the uploaded file.")
         else:
-            # YAML / YML — store raw bytes for direct use
-            st.session_state.cb_rows = uploaded_codebook.read()
+            st.session_state.cb_rows    = uploaded_codebook.read()
             st.session_state.cb_headers = None
 
     elif not uploaded_codebook:
-        # Clear stored codebook state when file is removed
-        st.session_state.cb_rows = None
+        st.session_state.cb_rows    = None
         st.session_state.cb_headers = None
 
     st.divider()
@@ -448,6 +686,13 @@ with st.sidebar:
         disabled=not uploaded_txts or st.session_state.running,
         use_container_width=True,
     )
+
+# ── Page title ────────────────────────────────────────────────────────────────
+
+st.title("Interview Analyser")
+st.caption("Fully offline — all processing happens on this machine.")
+
+# ── Run ───────────────────────────────────────────────────────────────────────
 
 if run_btn and uploaded_txts:
     st.session_state.running = True
@@ -466,21 +711,21 @@ if run_btn and uploaded_txts:
         if st.session_state.cb_rows is not None:
             codebook_path = tmp / "codebook.yaml"
             if isinstance(st.session_state.cb_rows, (bytes, bytearray)):
-                # Raw YAML uploaded directly
                 codebook_path.write_bytes(st.session_state.cb_rows)
             else:
-                # Spreadsheet parsed — convert to YAML
-                codebook_yaml = codebook_rows_to_yaml(
-                    st.session_state.cb_rows,
-                    st.session_state.cb_code_col,
-                    st.session_state.cb_label_col,
-                    st.session_state.cb_desc_col,
+                codebook_path.write_text(
+                    codebook_rows_to_yaml(
+                        st.session_state.cb_rows,
+                        st.session_state.cb_code_col,
+                        st.session_state.cb_label_col,
+                        st.session_state.cb_desc_col,
+                    ),
+                    encoding="utf-8",
                 )
-                codebook_path.write_text(codebook_yaml, encoding="utf-8")
 
         st.subheader("Analysis in progress")
         progress_bar = st.progress(0.0)
-        status_text = st.empty()
+        status_text  = st.empty()
 
         run_dir, results = run_pipeline(
             interview_paths,
@@ -494,11 +739,13 @@ if run_btn and uploaded_txts:
     st.session_state.running = False
     st.rerun()
 
+# ── Results ───────────────────────────────────────────────────────────────────
+
 if st.session_state.results:
-    results = st.session_state.results
+    results    = st.session_state.results
     run_dir: Path = st.session_state.run_dir
     interviews = {k: v for k, v in results.items() if k != "_corpus"}
-    corpus = results.get("_corpus", {})
+    corpus     = results.get("_corpus", {})
 
     tab_corpus, tab_interviews, tab_export = st.tabs(
         ["Corpus overview", "Per-interview", "Export"]
@@ -514,7 +761,7 @@ if st.session_state.results:
             rows = [
                 {
                     "Theme": info["label"],
-                    "Code": code,
+                    "Code":  code,
                     **{iid: info["by_interview"].get(iid, "—") for iid in iids},
                     "# Interviews": info["total_interviews"],
                 }
@@ -525,7 +772,7 @@ if st.session_state.results:
     with tab_interviews:
         if interviews:
             selected = st.selectbox("Interview", list(interviews.keys()))
-            data = interviews[selected]
+            data     = interviews[selected]
             col_l, col_r = st.columns(2)
 
             with col_l:
@@ -533,7 +780,7 @@ if st.session_state.results:
                 if s:
                     st.subheader("Summary")
                     m1, m2 = st.columns(2)
-                    m1.metric("Duration (est.)", f"{s.get('estimated_duration_min', '—')} min")
+                    m1.metric("Duration (est.)", f"{s.get('estimated_duration_min','—')} min")
                     m2.metric("Word count", s.get("word_count", "—"))
                     if s.get("key_topics"):
                         st.write("**Key topics**")

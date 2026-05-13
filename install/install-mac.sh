@@ -128,7 +128,7 @@ step "Copying pipeline files to $INSTALL_DIR"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SPEC_DIR="$(dirname "$SCRIPT_DIR")"
 
-for subdir in pipeline prompts output-schema; do
+for subdir in pipeline prompts output-schema assets .streamlit; do
     src="$SPEC_DIR/$subdir"
     if [[ -d "$src" ]]; then
         cp -r "$src" "$INSTALL_DIR/"

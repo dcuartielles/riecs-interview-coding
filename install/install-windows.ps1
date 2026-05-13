@@ -122,7 +122,10 @@ $pipelineDir = Join-Path $specDir "pipeline"
 $promptsDir  = Join-Path $specDir "prompts"
 $schemaDir   = Join-Path $specDir "output-schema"
 
-foreach ($src in @($pipelineDir, $promptsDir, $schemaDir)) {
+$assetsDir    = Join-Path $specDir "assets"
+$streamlitDir = Join-Path $specDir ".streamlit"
+
+foreach ($src in @($pipelineDir, $promptsDir, $schemaDir, $assetsDir, $streamlitDir)) {
     if (Test-Path $src) {
         Copy-Item -Recurse -Force $src $InstallDir
         Write-OK "Copied $(Split-Path -Leaf $src)"
