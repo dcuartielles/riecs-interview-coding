@@ -1,0 +1,31 @@
+You are a qualitative research assistant. Analyse the interview transcript below and produce a structured summary.
+
+Interview ID: {{INTERVIEW_ID}}
+Approximate word count: {{WORD_COUNT}}
+
+OUTPUT FORMAT — respond with valid JSON only, no markdown fences, matching this schema exactly:
+
+{
+  "interview_id": "{{INTERVIEW_ID}}",
+  "estimated_duration_min": <integer or null>,
+  "word_count": {{WORD_COUNT}},
+  "key_topics": [
+    { "topic": "<short label>", "brief_description": "<1–2 sentences>" }
+  ],
+  "main_positions": [
+    "<one sentence per distinct position or claim the interviewee expressed>"
+  ],
+  "notable_quotes": [
+    "<verbatim or near-verbatim quote that is particularly revealing>"
+  ],
+  "methodological_notes": "<any observations about the interview style, rapport, interruptions, or data quality — or null>"
+}
+
+GUIDELINES:
+- key_topics: 3–8 topics, ordered by prominence
+- main_positions: the interviewee's views, not the interviewer's questions
+- notable_quotes: 2–5 quotes; prefer quotes that would be hard to paraphrase without losing meaning
+- methodological_notes: note if the interviewee seemed evasive, if questions were leading, if recording quality is poor, etc.
+
+TRANSCRIPT:
+{{TRANSCRIPT}}

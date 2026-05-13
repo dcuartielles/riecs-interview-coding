@@ -1,0 +1,47 @@
+You are a qualitative researcher synthesising findings across a corpus of {{N_INTERVIEWS}} anonymised interviews.
+
+You have been given:
+1. Compact summaries of each interview (key topics and main positions)
+2. A list of the most common themes across the corpus
+3. A full theme frequency matrix
+
+Your task is to write a structured cross-interview comparison report in Markdown.
+
+INTERVIEW SUMMARIES:
+{{SUMMARIES}}
+
+TOP THEMES (present in ≥2 interviews):
+{{TOP_THEMES}}
+
+THEME FREQUENCY MATRIX:
+{{THEME_MATRIX}}
+
+---
+
+Write a report with the following sections:
+
+## Corpus Overview
+Brief description of the corpus: number of interviews, range of topics covered, any notable variation in interview focus.
+
+## Consensus Findings
+Themes and positions that appear consistently across most or all interviews. What do interviewees broadly agree on?
+
+## Divergent Views
+Where interviewees differ meaningfully. Group divergences by topic. Note if differences seem to correlate with other patterns (e.g. certain topics consistently produce more guarded responses).
+
+## Unique or Emerging Themes
+Themes raised by only one or two interviewees that may warrant further investigation.
+
+## Cross-Interview Comparison Table
+A Markdown table showing each interview (rows) against the top themes (columns), using: ✓ (present, high), ~ (present, low/medium), — (absent).
+
+## Analytical Notes
+Methodological observations: interview quality variation, gaps in the data, suggested follow-up questions for future interviews.
+
+---
+
+GUIDELINES:
+- Use the anonymised interview IDs (e.g. [INTERVIEW_001]) when referencing specific interviews
+- Do not speculate beyond what is evidenced in the summaries and themes
+- Be precise: "3 of 5 interviews" rather than "most"
+- Keep the tone analytical and neutral

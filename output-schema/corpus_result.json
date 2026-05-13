@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "CorpusComparisonResult",
+  "description": "Cross-interview theme matrix",
+  "type": "object",
+  "properties": {
+    "codes": {
+      "type": "object",
+      "description": "Keyed by theme code",
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "label":            { "type": "string" },
+          "total_interviews": { "type": "integer" },
+          "by_interview": {
+            "type": "object",
+            "description": "interview_id -> frequency label",
+            "additionalProperties": { "type": "string", "enum": ["high", "medium", "low"] }
+          }
+        },
+        "required": ["label", "total_interviews", "by_interview"]
+      }
+    }
+  },
+  "required": ["codes"]
+}

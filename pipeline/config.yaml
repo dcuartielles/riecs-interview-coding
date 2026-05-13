@@ -1,0 +1,39 @@
+# interview-analyser configuration
+# Edit before running main.py
+
+models:
+  anonymise: llama3.1:8b
+  summarise:  llama3.1:8b
+  themes:     llama3.1:8b
+  sentiment:  llama3.1:8b
+  compare:    llama3.1:8b
+  # Override individual stages for higher quality, e.g.:
+  # themes:   llama3.1:70b
+  # compare:  llama3.1:70b
+
+ollama:
+  host: http://127.0.0.1:11434   # never change to an external host
+  timeout_seconds: 300           # per LLM call; increase for slow hardware or long transcripts
+
+paths:
+  interviews: ./interviews        # directory of .txt transcript files
+  output:     ./output            # timestamped run subdirectories written here
+  codebook:   null                # optional: path to codebook.yaml for guided theme coding
+
+chunking:
+  max_words_per_chunk: 4000       # split long transcripts into chunks of this size
+  overlap_words: 200              # overlap between chunks to preserve context
+
+analysis:
+  language: en
+  anonymise_dates: true           # replace specific dates; set false to keep relative references
+  min_theme_frequency: 2          # exclude themes mentioned fewer than N times
+  sentiment_granularity: topic    # 'overall' or 'topic' (per key-topic sentiment breakdown)
+
+gdpr:
+  # Entity maps contain original PII — store separately from anonymised outputs
+  entities_subdir: entities_CONFIDENTIAL
+  # Never include original values in run_log.jsonl
+  log_pii: false
+  # Warn if output directory is on a network drive
+  warn_network_path: true

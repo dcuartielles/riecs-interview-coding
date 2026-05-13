@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "InterviewAnalysisResult",
+  "description": "Per-interview output bundle",
+  "type": "object",
+  "properties": {
+    "interview_id":           { "type": "string" },
+    "estimated_duration_min": { "type": ["integer", "null"] },
+    "word_count":             { "type": "integer" },
+    "key_topics": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "topic":             { "type": "string" },
+          "brief_description": { "type": "string" }
+        },
+        "required": ["topic", "brief_description"]
+      }
+    },
+    "main_positions":     { "type": "array", "items": { "type": "string" } },
+    "notable_quotes":     { "type": "array", "items": { "type": "string" } },
+    "methodological_notes": { "type": ["string", "null"] }
+  },
+  "required": ["interview_id", "word_count", "key_topics", "main_positions", "notable_quotes"]
+}

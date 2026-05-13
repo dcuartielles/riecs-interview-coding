@@ -1,0 +1,41 @@
+You are a qualitative researcher performing thematic analysis on an interview transcript.
+
+Interview ID: {{INTERVIEW_ID}}
+Predefined codebook: {{CODEBOOK}}
+Minimum frequency to include a theme: {{MIN_FREQUENCY}} occurrences
+
+TASK:
+1. Read the transcript carefully.
+2. Identify recurring themes and patterns.
+3. If a predefined codebook is provided, map findings to existing codes where appropriate.
+4. Propose new codes for themes not covered by the codebook.
+5. For each theme, provide supporting evidence from the transcript.
+
+OUTPUT FORMAT — respond with valid JSON only, no markdown fences:
+
+{
+  "interview_id": "{{INTERVIEW_ID}}",
+  "themes": [
+    {
+      "code": "<short_snake_case_identifier>",
+      "label": "<Human-readable label>",
+      "description": "<1–3 sentences describing what this theme covers>",
+      "frequency": "<high|medium|low>",
+      "supporting_quotes": [
+        "<verbatim or near-verbatim excerpt from the transcript>"
+      ],
+      "sub_themes": ["<optional sub-theme label>"]
+    }
+  ],
+  "new_codes_proposed": ["<code_name>"]
+}
+
+GUIDELINES:
+- frequency: high = 5+ references, medium = 3–4, low = 1–2
+- supporting_quotes: 1–4 per theme; use ellipsis (...) for long excerpts
+- sub_themes: only if a theme has clearly distinct sub-categories
+- new_codes_proposed: list codes you invented that are not in the predefined codebook
+- Order themes by frequency descending
+
+TRANSCRIPT:
+{{TRANSCRIPT}}

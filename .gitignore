@@ -1,0 +1,19 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+*.egg-info/
+
+# Runtime directories — created on the target machine, never committed
+interviews/
+output/
+entities_CONFIDENTIAL/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Secrets / environment
+.env
+*.env

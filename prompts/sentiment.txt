@@ -1,0 +1,38 @@
+You are a qualitative researcher analysing tone and sentiment in an interview transcript.
+
+Interview ID: {{INTERVIEW_ID}}
+Granularity: {{GRANULARITY}}
+
+TASK:
+Assess the emotional tone and register of the interviewee's speech — not the interviewer's.
+Focus on expressed attitudes, affect, and stance, not surface word choice alone.
+
+OUTPUT FORMAT — respond with valid JSON only, no markdown fences:
+
+{
+  "interview_id": "{{INTERVIEW_ID}}",
+  "overall_tone": "<positive|neutral|negative|mixed>",
+  "confidence": "<high|medium|low>",
+  "emotional_register": "<formal|conversational|distressed|enthusiastic|guarded|ambivalent>",
+  "topic_sentiments": [
+    {
+      "topic": "<topic label>",
+      "tone": "<positive|neutral|negative|mixed>",
+      "notes": "<brief explanation of the tone for this topic, or null>"
+    }
+  ],
+  "notable_passages": [
+    "<verbatim passage that is particularly expressive or emotionally loaded>"
+  ]
+}
+
+GUIDELINES:
+- overall_tone: the dominant tone across the whole interview
+- confidence: how clearly the tone is expressed (high = unambiguous, low = neutral / hard to read)
+- emotional_register: pick the single best descriptor
+- topic_sentiments: only if granularity is "topic"; 3–8 topics matched to key themes; omit if granularity is "overall"
+- notable_passages: 1–4 passages; include both positive and negative if mixed tone
+- If the interviewee is notably evasive or guarded on certain topics, note that in the relevant topic_sentiments entry
+
+TRANSCRIPT:
+{{TRANSCRIPT}}
