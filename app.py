@@ -38,28 +38,29 @@ _RIECS_CSS = """
     --border: #dde4ea;
 }
 
-/* ── App shell ── */
+/* ── Hide native Streamlit chrome; use our own titlebar ── */
+header[data-testid="stHeader"]   { display: none !important; }
+[data-testid="stSidebar"]        { display: none !important; }
+[data-testid="collapsedControl"] { display: none !important; }
 .stApp { background-color: var(--cream); }
-.stApp > header { background-color: var(--navy) !important; }
-.stApp > header * { color: #b0c4d0 !important; }
-[data-testid="stToolbar"] { background: var(--navy) !important; }
+.main .block-container { padding-top: 4.75rem !important; }
 
-/* ── Sidebar ── */
-[data-testid="stSidebar"] {
-    background-color: var(--white) !important;
-    border-right: 1px solid var(--border);
+/* ── Custom title bar ── */
+.riecs-titlebar {
+    position: fixed;
+    top: 0; left: 0; right: 0;
+    height: 3.5rem;
+    z-index: 9999;
+    background: var(--navy);
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0 1.5rem;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.25);
 }
-[data-testid="stSidebar"] h1,
-[data-testid="stSidebar"] h2,
-[data-testid="stSidebar"] h3 { color: var(--navy) !important; }
-[data-testid="stSidebar"] label {
-    font-size: 0.8rem !important;
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
-    color: var(--steel) !important;
-    font-weight: 600;
-}
-[data-testid="stSidebar"] hr { border-color: var(--border) !important; }
+.riecs-titlebar img         { height: 2rem; width: auto; }
+.riecs-titlebar-title       { color: #fff; font-weight: 700; font-size: 1.05rem; line-height: 1.2; }
+.riecs-titlebar-sub         { color: #8aa8bc; font-size: 0.7rem; margin-top: 0.05rem; }
 
 /* ── Headings ── */
 h1 { color: var(--navy) !important; }
@@ -82,7 +83,6 @@ h3 { color: var(--navy) !important; }
 }
 [data-testid="stBaseButton-primary"]:hover, button[kind="primary"]:hover {
     filter: brightness(0.88) !important;
-    border: none !important;
 }
 [data-testid="stBaseButton-primary"]:disabled,
 button[kind="primary"]:disabled { opacity: 0.45 !important; }
@@ -201,6 +201,65 @@ blockquote {
     color: var(--steel);
     margin: 0.5rem 0;
 }
+
+/* ── Scrollable report pane (Outcomes tab) ── */
+.riecs-scroll-pane {
+    max-height: 65vh;
+    overflow-y: auto;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 1.5rem 2rem;
+    background: var(--white);
+    box-shadow: 0 2px 8px rgba(44,50,76,0.07);
+    font-size: 0.92rem;
+    line-height: 1.75;
+}
+.riecs-scroll-pane h2 {
+    color: var(--navy);
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 0.3rem;
+    margin: 1.5rem 0 0.75rem;
+    font-size: 1.1rem;
+}
+.riecs-scroll-pane h3 {
+    color: var(--teal);
+    margin: 1.2rem 0 0.4rem;
+    font-size: 0.95rem;
+}
+.riecs-scroll-pane h4 {
+    color: var(--steel);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    font-size: 0.78rem;
+    margin: 1rem 0 0.3rem;
+}
+.riecs-scroll-pane blockquote {
+    border-left: 3px solid var(--teal);
+    background: #f0f4f7;
+    padding: 0.4rem 0.9rem;
+    margin: 0.4rem 0;
+    color: var(--steel);
+    font-style: italic;
+    border-radius: 0 4px 4px 0;
+}
+.riecs-scroll-pane .interview-card {
+    border-top: 3px solid var(--teal);
+    background: var(--cream);
+    border-radius: 0 0 8px 8px;
+    padding: 1rem 1.25rem;
+    margin: 1.5rem 0;
+}
+.riecs-scroll-pane .badge {
+    display: inline-block; padding: 1px 8px; border-radius: 99px;
+    font-size: 0.75rem; font-weight: 600;
+}
+.tone-positive { background: #d4ead5; color: #1a5c2a; }
+.tone-negative { background: #fde8e8; color: #7a2020; }
+.tone-neutral  { background: var(--border); color: var(--muted); }
+.tone-mixed    { background: #fef6e8; color: #7a4a10; }
+.freq-high   { background: #e8f0f5; color: var(--teal); }
+.freq-medium { background: #f0f4f7; color: var(--steel); }
+.freq-low    { background: #f5f7f9; color: var(--muted); }
 </style>
 """
 
@@ -338,7 +397,7 @@ def run_pipeline(
         results[iid] = {}
         raw_text = read_transcript(interview_path)
 
-        status_cb(f"{iid}: anonymising...")
+        status_cb(f"{iid}: anonymising…")
         anon_text, entity_map = anonymise_transcript(raw_text, cfg)
         (run_dir / "anonymised" / f"{iid}_anon.txt").write_text(anon_text, encoding="utf-8")
         (entities_dir / f"{iid}_entities.json").write_text(
@@ -347,7 +406,7 @@ def run_pipeline(
         step += 1
         progress_cb(step / total_steps)
 
-        status_cb(f"{iid}: summarising...")
+        status_cb(f"{iid}: summarising…")
         summary = summarise(anon_text, iid, cfg)
         (run_dir / "analysis" / f"{iid}_summary.json").write_text(
             json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8"
@@ -356,7 +415,7 @@ def run_pipeline(
         step += 1
         progress_cb(step / total_steps)
 
-        status_cb(f"{iid}: extracting themes...")
+        status_cb(f"{iid}: extracting themes…")
         themes = extract_themes(anon_text, iid, cfg)
         (run_dir / "analysis" / f"{iid}_themes.json").write_text(
             json.dumps(themes, ensure_ascii=False, indent=2), encoding="utf-8"
@@ -365,7 +424,7 @@ def run_pipeline(
         step += 1
         progress_cb(step / total_steps)
 
-        status_cb(f"{iid}: analysing sentiment...")
+        status_cb(f"{iid}: analysing sentiment…")
         sentiment = analyse_sentiment(anon_text, iid, cfg)
         (run_dir / "analysis" / f"{iid}_sentiment.json").write_text(
             json.dumps(sentiment, ensure_ascii=False, indent=2), encoding="utf-8"
@@ -374,7 +433,7 @@ def run_pipeline(
         step += 1
         progress_cb(step / total_steps)
 
-    status_cb("Building corpus comparison...")
+    status_cb("Building corpus comparison…")
     corpus_dir = run_dir / "corpus"
     corpus_dir.mkdir(exist_ok=True)
     summary_files = sorted((run_dir / "analysis").glob("*_summary.json"))
@@ -515,7 +574,6 @@ def generate_html_report(run_dir: Path, results: dict) -> str:
             f'<div class="card">'
             f'<h2 style="border:none;margin-top:0">Interview: {iid}</h2>'
         )
-
         s = data.get("summary", {})
         if s:
             parts.append(
@@ -595,6 +653,223 @@ def generate_html_report(run_dir: Path, results: dict) -> str:
     return "\n".join(parts)
 
 
+# ── DOCX report ───────────────────────────────────────────────────────────────
+
+def generate_docx_report(run_dir: Path, results: dict) -> bytes:
+    from docx import Document as DocxDoc
+    from docx.shared import Pt
+    from docx.enum.text import WD_ALIGN_PARAGRAPH
+
+    doc = DocxDoc()
+    corpus     = results.get("_corpus", {})
+    interviews = {k: v for k, v in results.items() if k != "_corpus"}
+    now        = datetime.now().strftime("%Y-%m-%d %H:%M")
+
+    t = doc.add_heading("Interview Analysis Report", 0)
+    t.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    doc.add_paragraph(f"Generated: {now}").italic = True
+    doc.add_paragraph(f"Output: {run_dir}").italic = True
+
+    if corpus.get("report"):
+        doc.add_heading("Executive Summary", 1)
+        for line in corpus["report"].split("\n"):
+            stripped = line.strip()
+            if stripped.startswith("## "):
+                doc.add_heading(stripped[3:], 2)
+            elif stripped.startswith("# "):
+                doc.add_heading(stripped[2:], 1)
+            elif stripped.startswith("- "):
+                doc.add_paragraph(stripped[2:], style="List Bullet")
+            elif stripped:
+                doc.add_paragraph(stripped)
+
+    matrix_codes = corpus.get("matrix", {}).get("codes", {})
+    if matrix_codes:
+        doc.add_heading("Theme Matrix", 1)
+        iids  = sorted({iid for c in matrix_codes.values() for iid in c["by_interview"]})
+        ncols = 2 + len(iids) + 1
+        tbl   = doc.add_table(rows=1, cols=ncols)
+        tbl.style = "Table Grid"
+        hdr = tbl.rows[0].cells
+        hdr[0].text = "Theme"
+        hdr[1].text = "Code"
+        for i, iid in enumerate(iids):
+            hdr[2 + i].text = iid
+        hdr[ncols - 1].text = "# Interviews"
+        for code, info in matrix_codes.items():
+            row = tbl.add_row().cells
+            row[0].text = info.get("label", "")
+            row[1].text = code
+            for i, iid in enumerate(iids):
+                row[2 + i].text = str(info["by_interview"].get(iid, ""))
+            row[ncols - 1].text = str(info.get("total_interviews", ""))
+
+    for iid, data in interviews.items():
+        doc.add_heading(f"Interview: {iid}", 1)
+
+        s = data.get("summary", {})
+        if s:
+            doc.add_heading("Summary", 2)
+            doc.add_paragraph(
+                f"Estimated duration: {s.get('estimated_duration_min', '—')} min"
+                f"  |  Word count: {s.get('word_count', '—')}"
+            )
+            if s.get("key_topics"):
+                doc.add_heading("Key Topics", 3)
+                for topic in s["key_topics"]:
+                    if isinstance(topic, dict):
+                        p = doc.add_paragraph(style="List Bullet")
+                        run = p.add_run(f"{topic['topic']}: ")
+                        run.bold = True
+                        p.add_run(topic.get("brief_description", ""))
+                    else:
+                        doc.add_paragraph(str(topic), style="List Bullet")
+            if s.get("main_positions"):
+                doc.add_heading("Main Positions", 3)
+                for pos in s["main_positions"]:
+                    doc.add_paragraph(str(pos), style="List Bullet")
+            if s.get("notable_quotes"):
+                doc.add_heading("Notable Quotes", 3)
+                for q in s["notable_quotes"]:
+                    p = doc.add_paragraph(f'"{q}"')
+                    p.runs[0].italic = True
+            if s.get("methodological_notes"):
+                p = doc.add_paragraph(s["methodological_notes"])
+                p.runs[0].italic = True
+
+        themes = data.get("themes", {})
+        if themes.get("themes"):
+            doc.add_heading("Themes", 2)
+            for theme in themes["themes"]:
+                label = theme.get("label", theme.get("code", ""))
+                freq  = theme.get("frequency", "")
+                h = doc.add_heading(f"{label}  [{freq}]", 3)
+                doc.add_paragraph(theme.get("description", ""))
+                if theme.get("sub_themes"):
+                    doc.add_paragraph("Sub-themes: " + ", ".join(theme["sub_themes"]))
+                for q in theme.get("supporting_quotes", [])[:3]:
+                    p = doc.add_paragraph(f'"{q}"')
+                    p.runs[0].italic = True
+            if themes.get("new_codes_proposed"):
+                doc.add_paragraph("New codes proposed: " + ", ".join(themes["new_codes_proposed"]))
+
+        sent = data.get("sentiment", {})
+        if sent:
+            doc.add_heading("Sentiment", 2)
+            doc.add_paragraph(
+                f"Overall tone: {sent.get('overall_tone', '—')}"
+                f"  |  Confidence: {sent.get('confidence', '—')}"
+                f"  |  Register: {sent.get('emotional_register', '—')}"
+            )
+            if sent.get("topic_sentiments"):
+                for ts in sent["topic_sentiments"]:
+                    notes = f" — {ts['notes']}" if ts.get("notes") else ""
+                    doc.add_paragraph(
+                        f"{ts.get('topic', '')}: {ts.get('tone', '')}{notes}",
+                        style="List Bullet",
+                    )
+            if sent.get("notable_passages"):
+                doc.add_heading("Notable Passages", 3)
+                for passage in sent["notable_passages"]:
+                    p = doc.add_paragraph(f'"{passage}"')
+                    p.runs[0].italic = True
+
+    buf = io.BytesIO()
+    doc.save(buf)
+    return buf.getvalue()
+
+
+# ── Scrollable pane HTML builder ──────────────────────────────────────────────
+
+def _report_highlights_html(results: dict) -> str:
+    corpus     = results.get("_corpus", {})
+    interviews = {k: v for k, v in results.items() if k != "_corpus"}
+    parts: list[str] = []
+
+    if corpus.get("report"):
+        parts.append(f'<h2>Executive Summary</h2>{_md_to_html(corpus["report"])}')
+
+    matrix_codes = corpus.get("matrix", {}).get("codes", {})
+    if matrix_codes:
+        iids   = sorted({iid for c in matrix_codes.values() for iid in c["by_interview"]})
+        header = (
+            "<tr><th>Theme</th><th>Code</th>"
+            + "".join(f"<th>{i}</th>" for i in iids)
+            + "<th>Interviews</th></tr>"
+        )
+        rows = "".join(
+            f'<tr><td>{info["label"]}</td><td><code>{code}</code></td>'
+            + "".join(f'<td>{info["by_interview"].get(i, "&mdash;")}</td>' for i in iids)
+            + f'<td>{info["total_interviews"]}</td></tr>'
+            for code, info in matrix_codes.items()
+        )
+        parts.append(
+            f'<h2>Theme Matrix</h2>'
+            f'<table style="border-collapse:collapse;width:100%;font-size:.85rem">'
+            f'<thead style="background:#f0f4f7">{header}</thead>'
+            f'<tbody>{rows}</tbody></table>'
+        )
+
+    for iid, data in interviews.items():
+        card: list[str] = [f'<div class="interview-card"><h2>{iid}</h2>']
+
+        s = data.get("summary", {})
+        if s:
+            card.append(
+                f'<h3>Summary</h3>'
+                f'<p><strong>Duration (est.):</strong> {s.get("estimated_duration_min","—")} min'
+                f' &nbsp;|&nbsp; <strong>Words:</strong> {s.get("word_count","—")}</p>'
+            )
+            if s.get("key_topics"):
+                items = "".join(
+                    f'<li><strong>{t["topic"]}</strong>: {t.get("brief_description","")}</li>'
+                    if isinstance(t, dict) else f"<li>{t}</li>"
+                    for t in s["key_topics"]
+                )
+                card.append(f'<h4>Key topics</h4><ul>{items}</ul>')
+            if s.get("main_positions"):
+                card.append('<h4>Main positions</h4><ul>'
+                            + "".join(f"<li>{p}</li>" for p in s["main_positions"])
+                            + "</ul>")
+            if s.get("notable_quotes"):
+                card.append('<h4>Notable quotes</h4>'
+                            + "".join(f"<blockquote>{q}</blockquote>"
+                                      for q in s["notable_quotes"]))
+
+        themes = data.get("themes", {})
+        if themes.get("themes"):
+            card.append("<h3>Themes</h3>")
+            for theme in themes["themes"]:
+                freq = theme.get("frequency", "")
+                card.append(
+                    f'<h4>{theme.get("label", theme.get("code",""))}'
+                    f' <code>{theme.get("code","")}</code>'
+                    f' <span class="badge freq-{freq}">{freq}</span></h4>'
+                    f'<p>{theme.get("description","")}</p>'
+                )
+                for q in theme.get("supporting_quotes", [])[:2]:
+                    card.append(f"<blockquote>{q}</blockquote>")
+
+        sent = data.get("sentiment", {})
+        if sent:
+            tone = sent.get("overall_tone", "neutral")
+            card.append(
+                f'<h3>Sentiment</h3>'
+                f'<p>Tone: <span class="badge tone-{tone}">{tone}</span>'
+                f' &nbsp; Confidence: {sent.get("confidence","—")}'
+                f' &nbsp; Register: {sent.get("emotional_register","—")}</p>'
+            )
+            if sent.get("notable_passages"):
+                card.append("".join(
+                    f"<blockquote>{p}</blockquote>" for p in sent["notable_passages"]
+                ))
+
+        card.append("</div>")
+        parts.append("".join(card))
+
+    return "\n".join(parts)
+
+
 # ── Streamlit app ─────────────────────────────────────────────────────────────
 
 _favicon = ASSETS_DIR / "favicon.ico"
@@ -602,13 +877,23 @@ st.set_page_config(
     page_title="Interview Analyser — RIECS",
     page_icon=str(_favicon) if _favicon.exists() else "📋",
     layout="wide",
+    initial_sidebar_state="collapsed",
 )
 
 st.markdown(_RIECS_CSS, unsafe_allow_html=True)
 
-_glyph = ASSETS_DIR / "riecs-glyph.png"
-if _glyph.exists():
-    st.logo(str(_glyph))
+# Custom title bar
+_logo_uri = _logo_data_uri()
+_logo_img = f'<img src="{_logo_uri}" alt="RIECS">' if _logo_uri else ""
+st.markdown(
+    f'<div class="riecs-titlebar">'
+    f'{_logo_img}'
+    f'<div>'
+    f'<div class="riecs-titlebar-title">Interview Analyser</div>'
+    f'<div class="riecs-titlebar-sub">Fully offline — all processing happens on this machine</div>'
+    f'</div></div>',
+    unsafe_allow_html=True,
+)
 
 for key, default in [
     ("results", None), ("run_dir", None), ("running", False),
@@ -618,236 +903,179 @@ for key, default in [
     if key not in st.session_state:
         st.session_state[key] = default
 
-# ── Sidebar ───────────────────────────────────────────────────────────────────
+# ── Tabs ──────────────────────────────────────────────────────────────────────
 
-with st.sidebar:
-    st.header("Inputs")
-    uploaded_txts = st.file_uploader(
-        "Interview transcripts",
-        type=["txt", "docx"],
-        accept_multiple_files=True,
-        help="Drag and drop plain-text or Word transcript files.",
-    )
+tab_progress, tab_outcomes = st.tabs(["Progress", "Outcomes"])
 
-    uploaded_codebook = st.file_uploader(
-        "Labelbook — optional",
-        type=["xlsx", "xls", "csv", "yaml", "yml"],
-        help="Excel, CSV, or YAML codebook for guided theme coding.",
-    )
+# ── Progress tab ──────────────────────────────────────────────────────────────
 
-    if uploaded_codebook:
-        ext = Path(uploaded_codebook.name).suffix.lower()
-        if ext in (".xlsx", ".xls", ".csv"):
-            file_bytes = uploaded_codebook.read()
-            rows, headers = parse_spreadsheet(file_bytes, uploaded_codebook.name)
-            if rows and headers:
-                if st.session_state.cb_headers != headers:
-                    st.session_state.cb_rows      = rows
-                    st.session_state.cb_headers   = headers
-                    st.session_state.cb_code_col  = headers[_auto_detect(headers, "code")]
-                    st.session_state.cb_label_col = headers[_auto_detect(headers, "label")]
-                    st.session_state.cb_desc_col  = headers[_auto_detect(headers, "description")]
+with tab_progress:
+    col_inputs, col_status = st.columns(2, gap="large")
 
-                with st.expander(f"Labelbook — {len(rows)} codes", expanded=True):
-                    st.session_state.cb_code_col = st.selectbox(
-                        "Code column", headers,
-                        index=headers.index(st.session_state.cb_code_col),
-                        key="sel_code",
-                    )
-                    st.session_state.cb_label_col = st.selectbox(
-                        "Label column", headers,
-                        index=headers.index(st.session_state.cb_label_col),
-                        key="sel_label",
-                    )
-                    st.session_state.cb_desc_col = st.selectbox(
-                        "Description column", headers,
-                        index=headers.index(st.session_state.cb_desc_col),
-                        key="sel_desc",
-                    )
-                    st.write("**Preview (first 3 codes)**")
-                    for r in rows[:3]:
-                        code  = r.get(st.session_state.cb_code_col, "")
-                        label = r.get(st.session_state.cb_label_col, "")
-                        st.write(f"- `{code}` — {label}")
+    with col_inputs:
+        st.subheader("Transcripts")
+        uploaded_txts = st.file_uploader(
+            "Interview files",
+            type=["txt", "docx"],
+            accept_multiple_files=True,
+            help="Drag and drop plain-text or Word transcript files.",
+            label_visibility="collapsed",
+        )
+
+        st.subheader("Labelbook")
+        uploaded_codebook = st.file_uploader(
+            "Labelbook file",
+            type=["xlsx", "xls", "csv", "yaml", "yml"],
+            help="Excel, CSV, or YAML codebook — optional.",
+            label_visibility="collapsed",
+        )
+
+        if uploaded_codebook:
+            ext = Path(uploaded_codebook.name).suffix.lower()
+            if ext in (".xlsx", ".xls", ".csv"):
+                file_bytes = uploaded_codebook.read()
+                rows, headers = parse_spreadsheet(file_bytes, uploaded_codebook.name)
+                if rows and headers:
+                    if st.session_state.cb_headers != headers:
+                        st.session_state.cb_rows      = rows
+                        st.session_state.cb_headers   = headers
+                        st.session_state.cb_code_col  = headers[_auto_detect(headers, "code")]
+                        st.session_state.cb_label_col = headers[_auto_detect(headers, "label")]
+                        st.session_state.cb_desc_col  = headers[_auto_detect(headers, "description")]
+
+                    with st.expander(f"{len(rows)} codes — map columns", expanded=False):
+                        st.session_state.cb_code_col = st.selectbox(
+                            "Code column", headers,
+                            index=headers.index(st.session_state.cb_code_col),
+                            key="sel_code",
+                        )
+                        st.session_state.cb_label_col = st.selectbox(
+                            "Label column", headers,
+                            index=headers.index(st.session_state.cb_label_col),
+                            key="sel_label",
+                        )
+                        st.session_state.cb_desc_col = st.selectbox(
+                            "Description column", headers,
+                            index=headers.index(st.session_state.cb_desc_col),
+                            key="sel_desc",
+                        )
+                        st.caption("Preview (first 3 codes)")
+                        for r in rows[:3]:
+                            code  = r.get(st.session_state.cb_code_col, "")
+                            label = r.get(st.session_state.cb_label_col, "")
+                            st.write(f"- `{code}` — {label}")
+                else:
+                    st.warning("Could not read rows from the uploaded file.")
             else:
-                st.warning("Could not read rows from the uploaded file.")
-        else:
-            st.session_state.cb_rows    = uploaded_codebook.read()
+                st.session_state.cb_rows    = uploaded_codebook.read()
+                st.session_state.cb_headers = None
+        elif not uploaded_codebook:
+            st.session_state.cb_rows    = None
             st.session_state.cb_headers = None
 
-    elif not uploaded_codebook:
-        st.session_state.cb_rows    = None
-        st.session_state.cb_headers = None
-
-    st.divider()
-    run_btn = st.button(
-        "Run Analysis",
-        type="primary",
-        disabled=not uploaded_txts or st.session_state.running,
-        use_container_width=True,
-    )
-
-# ── Page title ────────────────────────────────────────────────────────────────
-
-st.title("Interview Analyser")
-st.caption("Fully offline — all processing happens on this machine.")
-
-# ── Run ───────────────────────────────────────────────────────────────────────
-
-if run_btn and uploaded_txts:
-    st.session_state.running = True
-    st.session_state.results = None
-
-    with tempfile.TemporaryDirectory() as tmpdir:
-        tmp = Path(tmpdir)
-
-        interview_paths = []
-        for f in uploaded_txts:
-            dest = tmp / f.name
-            dest.write_bytes(f.read())
-            interview_paths.append(dest)
-
-        codebook_path = None
-        if st.session_state.cb_rows is not None:
-            codebook_path = tmp / "codebook.yaml"
-            if isinstance(st.session_state.cb_rows, (bytes, bytearray)):
-                codebook_path.write_bytes(st.session_state.cb_rows)
-            else:
-                codebook_path.write_text(
-                    codebook_rows_to_yaml(
-                        st.session_state.cb_rows,
-                        st.session_state.cb_code_col,
-                        st.session_state.cb_label_col,
-                        st.session_state.cb_desc_col,
-                    ),
-                    encoding="utf-8",
-                )
-
-        st.subheader("Analysis in progress")
-        progress_bar = st.progress(0.0)
-        status_text  = st.empty()
-
-        run_dir, results = run_pipeline(
-            interview_paths,
-            codebook_path,
-            progress_cb=lambda v: progress_bar.progress(float(v)),
-            status_cb=lambda s: status_text.text(s),
-        )
-
-    st.session_state.results = results
-    st.session_state.run_dir = run_dir
-    st.session_state.running = False
-    st.rerun()
-
-# ── Results ───────────────────────────────────────────────────────────────────
-
-if st.session_state.results:
-    results    = st.session_state.results
-    run_dir: Path = st.session_state.run_dir
-    interviews = {k: v for k, v in results.items() if k != "_corpus"}
-    corpus     = results.get("_corpus", {})
-
-    tab_corpus, tab_interviews, tab_export = st.tabs(
-        ["Corpus overview", "Per-interview", "Export"]
-    )
-
-    with tab_corpus:
-        if corpus.get("report"):
-            st.markdown(corpus["report"])
-        matrix_codes = corpus.get("matrix", {}).get("codes", {})
-        if matrix_codes:
-            st.subheader("Theme matrix")
-            iids = sorted({iid for c in matrix_codes.values() for iid in c["by_interview"]})
-            rows = [
-                {
-                    "Theme": info["label"],
-                    "Code":  code,
-                    **{iid: info["by_interview"].get(iid, "—") for iid in iids},
-                    "# Interviews": info["total_interviews"],
-                }
-                for code, info in matrix_codes.items()
-            ]
-            st.dataframe(rows, use_container_width=True)
-
-    with tab_interviews:
-        if interviews:
-            selected = st.selectbox("Interview", list(interviews.keys()))
-            data     = interviews[selected]
-            col_l, col_r = st.columns(2)
-
-            with col_l:
-                s = data.get("summary", {})
-                if s:
-                    st.subheader("Summary")
-                    m1, m2 = st.columns(2)
-                    m1.metric("Duration (est.)", f"{s.get('estimated_duration_min','—')} min")
-                    m2.metric("Word count", s.get("word_count", "—"))
-                    if s.get("key_topics"):
-                        st.write("**Key topics**")
-                        for t in s["key_topics"]:
-                            if isinstance(t, dict):
-                                st.write(f"- **{t['topic']}**: {t.get('brief_description','')}")
-                            else:
-                                st.write(f"- {t}")
-                    if s.get("main_positions"):
-                        st.write("**Main positions**")
-                        for p in s["main_positions"]:
-                            st.write(f"- {p}")
-                    if s.get("notable_quotes"):
-                        st.write("**Notable quotes**")
-                        for q in s["notable_quotes"]:
-                            st.markdown(f"> {q}")
-
-                sent = data.get("sentiment", {})
-                if sent:
-                    st.subheader("Sentiment")
-                    st.metric("Overall tone", sent.get("overall_tone", "—"))
-                    st.write(
-                        f"Confidence: **{sent.get('confidence','—')}**"
-                        f" | Register: **{sent.get('emotional_register','—')}**"
-                    )
-                    if sent.get("topic_sentiments"):
-                        for ts in sent["topic_sentiments"]:
-                            notes = f" — {ts['notes']}" if ts.get("notes") else ""
-                            st.write(f"- **{ts.get('topic','')}**: {ts.get('tone','')}{notes}")
-                    if sent.get("notable_passages"):
-                        st.write("**Notable passages**")
-                        for p in sent["notable_passages"]:
-                            st.markdown(f"> {p}")
-
-            with col_r:
-                t = data.get("themes", {})
-                if t.get("themes"):
-                    st.subheader("Themes")
-                    for theme in t["themes"]:
-                        label = (
-                            f"{theme.get('label', theme.get('code',''))}"
-                            f"  [{theme.get('frequency','')}]"
-                        )
-                        with st.expander(label):
-                            st.write(f"**Code:** `{theme.get('code','')}`")
-                            st.write(theme.get("description", ""))
-                            if theme.get("sub_themes"):
-                                st.write("Sub-themes: " + ", ".join(theme["sub_themes"]))
-                            for q in theme.get("supporting_quotes", []):
-                                st.markdown(f"> {q}")
-                    if t.get("new_codes_proposed"):
-                        st.info("New codes proposed: " + ", ".join(t["new_codes_proposed"]))
-
-    with tab_export:
-        st.subheader("Export")
-        html = generate_html_report(run_dir, results)
-        st.download_button(
-            "Download HTML report",
-            data=html.encode("utf-8"),
-            file_name=f"interview-analysis-{run_dir.name}.html",
-            mime="text/html",
+        st.divider()
+        run_btn = st.button(
+            "Run Analysis",
+            type="primary",
+            disabled=not uploaded_txts or st.session_state.running,
             use_container_width=True,
         )
-        st.caption(
-            "Open in any browser. Use File > Print > Save as PDF to generate a PDF copy."
-        )
-        st.write(f"Raw output directory: `{run_dir}`")
 
-elif not st.session_state.running and not uploaded_txts:
-    st.info("Upload transcript files in the sidebar to get started.")
+    # ── Pipeline execution (renders into col_status) ──────────────────────────
+
+    if run_btn and uploaded_txts:
+        st.session_state.running = True
+        st.session_state.results = None
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            interview_paths = []
+            for f in uploaded_txts:
+                dest = tmp / f.name
+                dest.write_bytes(f.read())
+                interview_paths.append(dest)
+
+            codebook_path = None
+            if st.session_state.cb_rows is not None:
+                codebook_path = tmp / "codebook.yaml"
+                if isinstance(st.session_state.cb_rows, (bytes, bytearray)):
+                    codebook_path.write_bytes(st.session_state.cb_rows)
+                else:
+                    codebook_path.write_text(
+                        codebook_rows_to_yaml(
+                            st.session_state.cb_rows,
+                            st.session_state.cb_code_col,
+                            st.session_state.cb_label_col,
+                            st.session_state.cb_desc_col,
+                        ),
+                        encoding="utf-8",
+                    )
+
+            with col_status:
+                _progress = st.progress(0.0)
+                with st.status("Analysis in progress…", expanded=True) as _status:
+                    def _progress_cb(v: float) -> None:
+                        _progress.progress(float(v))
+
+                    def _status_cb(msg: str) -> None:
+                        _status.update(label=msg)
+                        st.write(msg)
+
+                    run_dir, results = run_pipeline(
+                        interview_paths,
+                        codebook_path,
+                        progress_cb=_progress_cb,
+                        status_cb=_status_cb,
+                    )
+                    _status.update(label="Analysis complete", state="complete", expanded=False)
+                _progress.progress(1.0)
+
+        st.session_state.results = results
+        st.session_state.run_dir = run_dir
+        st.session_state.running = False
+        st.rerun()
+
+    else:
+        with col_status:
+            if st.session_state.results:
+                st.success("Analysis complete. Switch to the **Outcomes** tab to view results.")
+                st.caption(f"Output: `{st.session_state.run_dir}`")
+            else:
+                st.info("Upload transcript files on the left and click **Run Analysis** to begin.")
+
+# ── Outcomes tab ──────────────────────────────────────────────────────────────
+
+with tab_outcomes:
+    if not st.session_state.results:
+        st.info("Run an analysis first — results will appear here.")
+    else:
+        results = st.session_state.results
+        run_dir: Path = st.session_state.run_dir
+
+        dl_col1, dl_col2 = st.columns(2, gap="large")
+        with dl_col1:
+            st.download_button(
+                "Download Word report (.docx)",
+                data=generate_docx_report(run_dir, results),
+                file_name=f"interview-analysis-{run_dir.name}.docx",
+                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                type="primary",
+                use_container_width=True,
+            )
+        with dl_col2:
+            st.download_button(
+                "Download HTML report",
+                data=generate_html_report(run_dir, results).encode("utf-8"),
+                file_name=f"interview-analysis-{run_dir.name}.html",
+                mime="text/html",
+                use_container_width=True,
+            )
+        st.caption("Open the HTML report in any browser. Use File > Print > Save as PDF for a PDF copy.")
+
+        st.subheader("Report highlights")
+        st.markdown(
+            f'<div class="riecs-scroll-pane">'
+            f'{_report_highlights_html(results)}'
+            f'</div>',
+            unsafe_allow_html=True,
+        )
