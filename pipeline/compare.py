@@ -6,6 +6,7 @@ builds a frequency matrix, then asks the LLM to synthesise findings.
 """
 
 import json
+import time
 from collections import defaultdict
 from pathlib import Path
 
@@ -18,8 +19,7 @@ def _load_prompt() -> str:
 
 
 def _build_theme_matrix(theme_files: list[Path]) -> dict:
-    """Build { theme_code: { interview_id: frequency_label } } matrix."""
-    all_codes: dict[str, dict] = defaultdict(dict)  # code -> {id: freq}
+    all_codes: dict[str, dict] = defaultdict(dict)
     code_labels: dict[str, str] = {}
 
     for tf in theme_files:
@@ -46,25 +46,24 @@ def build_corpus_comparison(
     summary_files: list[Path],
     theme_files: list[Path],
     cfg: dict,
+    tick_cb=None,
 ) -> dict:
-    model = cfg["models"]["compare"]
-    host = cfg["ollama"]["host"]
+    model   = cfg["models"]["compare"]
+    host    = cfg["ollama"]["host"]
     timeout = cfg["ollama"]["timeout_seconds"]
 
-    # Build theme matrix (deterministic, no LLM needed)
     matrix = _build_theme_matrix(theme_files)
 
-    # Assemble compact summaries for LLM synthesis prompt
     summaries_compact = []
     for sf in summary_files:
         data = json.loads(sf.read_text(encoding="utf-8"))
         summaries_compact.append({
             "id": data.get("interview_id"),
-            "key_topics": [t["topic"] if isinstance(t, dict) else t for t in data.get("key_topics", [])],
+            "key_topics": [t["topic"] if isinstance(t, dict) else t
+                           for t in data.get("key_topics", [])],
             "main_positions": data.get("main_positions", []),
         })
 
-    # Top themes (present in ≥2 interviews) for the prompt
     top_themes = [
         {"code": code, "label": info["label"], "n_interviews": info["total_interviews"]}
         for code, info in matrix["codes"].items()
@@ -81,11 +80,24 @@ def build_corpus_comparison(
     )
 
     client = ollama.Client(host=host)
-    response = client.chat(
+    stream = client.chat(
         model=model,
         messages=[{"role": "user", "content": prompt}],
         options={"temperature": 0.1, "num_predict": 4096},
+        stream=True,
     )
-    report_md = response.message.content.strip()
+    parts: list[str] = []
+    n = 0
+    t0 = time.time()
+    for chunk in stream:
+        delta = chunk.message.content
+        if delta:
+            parts.append(delta)
+            n += 1
+            if tick_cb and n % 40 == 0:
+                tick_cb(n, round(time.time() - t0))
+    if tick_cb:
+        tick_cb(n, round(time.time() - t0))
 
+    report_md = "".join(parts).strip()
     return {"matrix": matrix, "report": report_md}

@@ -372,81 +372,92 @@ def load_cfg(codebook_path: Path | None = None) -> dict:
     return cfg
 
 
-# ── Pipeline ──────────────────────────────────────────────────────────────────
+# ── Per-interview pipeline helpers ────────────────────────────────────────────
 
-def run_pipeline(
-    interview_paths: list[Path],
-    codebook_path: Path | None,
-    progress_cb,
+def _process_one_interview(
+    interview_path: Path,
+    run_dir: Path,
+    cfg: dict,
     status_cb,
-) -> tuple[Path, dict]:
-    cfg = load_cfg(codebook_path)
-    run_id = datetime.now().strftime("%Y-%m-%d_%H-%M")
-    run_dir = INSTALL_DIR / "output" / run_id
-    (run_dir / "anonymised").mkdir(parents=True, exist_ok=True)
-    (run_dir / "analysis").mkdir(exist_ok=True)
+    tick_cb,
+) -> dict:
+    iid          = interview_path.stem
     entities_dir = run_dir / cfg["gdpr"]["entities_subdir"]
-    entities_dir.mkdir(exist_ok=True)
+    result: dict = {}
 
-    total_steps = len(interview_paths) * 4 + 1
-    step = 0
-    results: dict = {}
+    raw_text = read_transcript(interview_path)
 
-    for interview_path in interview_paths:
-        iid = interview_path.stem
-        results[iid] = {}
-        raw_text = read_transcript(interview_path)
-
-        status_cb(f"{iid}: anonymising…")
-        anon_text, entity_map = anonymise_transcript(raw_text, cfg)
-        (run_dir / "anonymised" / f"{iid}_anon.txt").write_text(anon_text, encoding="utf-8")
-        (entities_dir / f"{iid}_entities.json").write_text(
-            json.dumps(entity_map, ensure_ascii=False, indent=2), encoding="utf-8"
-        )
-        step += 1
-        progress_cb(step / total_steps)
-
-        status_cb(f"{iid}: summarising…")
-        summary = summarise(anon_text, iid, cfg)
-        (run_dir / "analysis" / f"{iid}_summary.json").write_text(
-            json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8"
-        )
-        results[iid]["summary"] = summary
-        step += 1
-        progress_cb(step / total_steps)
-
-        status_cb(f"{iid}: extracting themes…")
-        themes = extract_themes(anon_text, iid, cfg)
-        (run_dir / "analysis" / f"{iid}_themes.json").write_text(
-            json.dumps(themes, ensure_ascii=False, indent=2), encoding="utf-8"
-        )
-        results[iid]["themes"] = themes
-        step += 1
-        progress_cb(step / total_steps)
-
-        status_cb(f"{iid}: analysing sentiment…")
-        sentiment = analyse_sentiment(anon_text, iid, cfg)
-        (run_dir / "analysis" / f"{iid}_sentiment.json").write_text(
-            json.dumps(sentiment, ensure_ascii=False, indent=2), encoding="utf-8"
-        )
-        results[iid]["sentiment"] = sentiment
-        step += 1
-        progress_cb(step / total_steps)
-
-    status_cb("Building corpus comparison…")
-    corpus_dir = run_dir / "corpus"
-    corpus_dir.mkdir(exist_ok=True)
-    summary_files = sorted((run_dir / "analysis").glob("*_summary.json"))
-    theme_files   = sorted((run_dir / "analysis").glob("*_themes.json"))
-    corpus = build_corpus_comparison(summary_files, theme_files, cfg)
-    (corpus_dir / "themes_matrix.json").write_text(
-        json.dumps(corpus["matrix"], ensure_ascii=False, indent=2), encoding="utf-8"
+    status_cb(f"{iid}: anonymising…")
+    anon_text, entity_map = anonymise_transcript(raw_text, cfg, tick_cb=tick_cb)
+    (run_dir / "anonymised" / f"{iid}_anon.txt").write_text(anon_text, encoding="utf-8")
+    (entities_dir / f"{iid}_entities.json").write_text(
+        json.dumps(entity_map, ensure_ascii=False, indent=2), encoding="utf-8"
     )
-    (corpus_dir / "comparison_report.md").write_text(corpus["report"], encoding="utf-8")
-    progress_cb(1.0)
-    status_cb("Complete.")
 
-    return run_dir, {**results, "_corpus": corpus}
+    status_cb(f"{iid}: summarising…")
+    summary = summarise(anon_text, iid, cfg, tick_cb=tick_cb)
+    (run_dir / "analysis" / f"{iid}_summary.json").write_text(
+        json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
+    result["summary"] = summary
+
+    status_cb(f"{iid}: extracting themes…")
+    themes = extract_themes(anon_text, iid, cfg, tick_cb=tick_cb)
+    (run_dir / "analysis" / f"{iid}_themes.json").write_text(
+        json.dumps(themes, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
+    result["themes"] = themes
+
+    status_cb(f"{iid}: analysing sentiment…")
+    sentiment = analyse_sentiment(anon_text, iid, cfg, tick_cb=tick_cb)
+    (run_dir / "analysis" / f"{iid}_sentiment.json").write_text(
+        json.dumps(sentiment, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
+    result["sentiment"] = sentiment
+
+    return result
+
+
+def _load_interview_results(iid: str, run_dir: Path) -> dict:
+    result: dict = {}
+    for key, suffix in [("summary", "_summary"), ("themes", "_themes"), ("sentiment", "_sentiment")]:
+        f = run_dir / "analysis" / f"{iid}{suffix}.json"
+        if f.exists():
+            result[key] = json.loads(f.read_text(encoding="utf-8"))
+    return result
+
+
+def _write_checkpoint(
+    run_dir: Path,
+    work_dir: Path,
+    all_interviews: list[str],
+    codebook_path,
+    completed: list[str],
+) -> None:
+    cp = {
+        "run_dir":       str(run_dir),
+        "work_dir":      str(work_dir),
+        "interviews":    all_interviews,
+        "codebook_path": str(codebook_path) if codebook_path else None,
+        "completed":     completed,
+    }
+    (run_dir / "checkpoint.json").write_text(json.dumps(cp, indent=2), encoding="utf-8")
+
+
+def _find_resumable_run() -> dict | None:
+    output_dir = INSTALL_DIR / "output"
+    if not output_dir.exists():
+        return None
+    for cp_file in sorted(output_dir.glob("*/checkpoint.json"), reverse=True):
+        try:
+            cp         = json.loads(cp_file.read_text(encoding="utf-8"))
+            completed  = cp.get("completed", [])
+            interviews = cp.get("interviews", [])
+            if completed and len(completed) < len(interviews) and Path(cp["work_dir"]).exists():
+                return cp
+        except Exception:
+            continue
+    return None
 
 
 # ── HTML report ───────────────────────────────────────────────────────────────
@@ -897,6 +908,8 @@ st.markdown(
 
 for key, default in [
     ("results", None), ("run_dir", None), ("running", False),
+    ("work_dir", None), ("pending", []), ("partial_results", {}),
+    ("all_interviews", []), ("codebook_path", None), ("stop_requested", False),
     ("cb_rows", None), ("cb_headers", None),
     ("cb_code_col", None), ("cb_label_col", None), ("cb_desc_col", None),
 ]:
@@ -912,6 +925,8 @@ tab_progress, tab_outcomes = st.tabs(["Progress", "Outcomes"])
 with tab_progress:
     col_inputs, col_status = st.columns(2, gap="large")
 
+    # ── Left column: file inputs + run/stop/resume controls ──────────────────
+
     with col_inputs:
         st.subheader("Transcripts")
         uploaded_txts = st.file_uploader(
@@ -920,6 +935,7 @@ with tab_progress:
             accept_multiple_files=True,
             help="Drag and drop plain-text or Word transcript files.",
             label_visibility="collapsed",
+            disabled=st.session_state.running,
         )
 
         st.subheader("Labelbook")
@@ -928,9 +944,10 @@ with tab_progress:
             type=["xlsx", "xls", "csv", "yaml", "yml"],
             help="Excel, CSV, or YAML codebook — optional.",
             label_visibility="collapsed",
+            disabled=st.session_state.running,
         )
 
-        if uploaded_codebook:
+        if uploaded_codebook and not st.session_state.running:
             ext = Path(uploaded_codebook.name).suffix.lower()
             if ext in (".xlsx", ".xls", ".csv"):
                 file_bytes = uploaded_codebook.read()
@@ -969,79 +986,243 @@ with tab_progress:
             else:
                 st.session_state.cb_rows    = uploaded_codebook.read()
                 st.session_state.cb_headers = None
-        elif not uploaded_codebook:
+        elif not uploaded_codebook and not st.session_state.running:
             st.session_state.cb_rows    = None
             st.session_state.cb_headers = None
 
         st.divider()
-        run_btn = st.button(
-            "Run Analysis",
-            type="primary",
-            disabled=not uploaded_txts or st.session_state.running,
-            use_container_width=True,
-        )
 
-    # ── Pipeline execution (renders into col_status) ──────────────────────────
+        if st.session_state.running:
+            # Stop button — queued click is processed on next rerun after current LLM call
+            stop_btn = st.button(
+                "Stop after this interview",
+                type="secondary",
+                use_container_width=True,
+            )
+            if stop_btn:
+                st.session_state.stop_requested = True
+            st.caption("The current LLM call will finish before stopping. All progress is saved.")
 
-    if run_btn and uploaded_txts:
-        st.session_state.running = True
-        st.session_state.results = None
+        else:
+            run_btn = st.button(
+                "Run Analysis",
+                type="primary",
+                disabled=not uploaded_txts,
+                use_container_width=True,
+            )
 
-        with tempfile.TemporaryDirectory() as tmpdir:
-            tmp = Path(tmpdir)
-            interview_paths = []
-            for f in uploaded_txts:
-                dest = tmp / f.name
-                dest.write_bytes(f.read())
-                interview_paths.append(dest)
+            # Resume button — only show when a partial run exists
+            _resumable = _find_resumable_run()
+            if _resumable and not st.session_state.results:
+                _n_done  = len(_resumable.get("completed", []))
+                _n_total = len(_resumable.get("interviews", []))
+                resume_btn = st.button(
+                    f"↺  Resume last run  ({_n_done} / {_n_total} done)",
+                    use_container_width=True,
+                )
+                if resume_btn:
+                    _run_dir  = Path(_resumable["run_dir"])
+                    _work_dir = Path(_resumable["work_dir"])
+                    _partial  = {}
+                    for _fname in _resumable.get("completed", []):
+                        _iid = Path(_fname).stem
+                        _partial[_iid] = _load_interview_results(_iid, _run_dir)
+                    _pending = [
+                        str(_work_dir / _f)
+                        for _f in _resumable["interviews"]
+                        if _f not in _resumable.get("completed", [])
+                    ]
+                    st.session_state.run_dir        = _run_dir
+                    st.session_state.work_dir       = str(_work_dir)
+                    st.session_state.pending        = _pending
+                    st.session_state.all_interviews = _resumable["interviews"]
+                    st.session_state.codebook_path  = _resumable.get("codebook_path")
+                    st.session_state.partial_results = _partial
+                    st.session_state.stop_requested = False
+                    st.session_state.running        = True
+                    st.session_state.results        = None
+                    st.rerun()
 
-            codebook_path = None
-            if st.session_state.cb_rows is not None:
-                codebook_path = tmp / "codebook.yaml"
-                if isinstance(st.session_state.cb_rows, (bytes, bytearray)):
-                    codebook_path.write_bytes(st.session_state.cb_rows)
+            # ── Start new run ────────────────────────────────────────────────
+            if run_btn and uploaded_txts:
+                _run_id = datetime.now().strftime("%Y-%m-%d_%H-%M")
+                _work   = INSTALL_DIR / "work" / _run_id
+                _work.mkdir(parents=True, exist_ok=True)
+
+                _paths = []
+                for _f in uploaded_txts:
+                    _dest = _work / _f.name
+                    _dest.write_bytes(_f.read())
+                    _paths.append(_dest)
+
+                _cb_path = None
+                if st.session_state.cb_rows is not None:
+                    _cb_path = _work / "codebook.yaml"
+                    if isinstance(st.session_state.cb_rows, (bytes, bytearray)):
+                        _cb_path.write_bytes(st.session_state.cb_rows)
+                    else:
+                        _cb_path.write_text(
+                            codebook_rows_to_yaml(
+                                st.session_state.cb_rows,
+                                st.session_state.cb_code_col,
+                                st.session_state.cb_label_col,
+                                st.session_state.cb_desc_col,
+                            ),
+                            encoding="utf-8",
+                        )
+
+                _cfg     = load_cfg(_cb_path)
+                _run_dir = INSTALL_DIR / "output" / _run_id
+                (_run_dir / "anonymised").mkdir(parents=True, exist_ok=True)
+                (_run_dir / "analysis").mkdir(exist_ok=True)
+                (_run_dir / _cfg["gdpr"]["entities_subdir"]).mkdir(exist_ok=True)
+
+                st.session_state.run_dir        = _run_dir
+                st.session_state.work_dir       = str(_work)
+                st.session_state.pending        = [str(p) for p in _paths]
+                st.session_state.all_interviews = [p.name for p in _paths]
+                st.session_state.codebook_path  = str(_cb_path) if _cb_path else None
+                st.session_state.partial_results = {}
+                st.session_state.stop_requested = False
+                st.session_state.running        = True
+                st.session_state.results        = None
+                st.rerun()
+
+    # ── Right column: live status ─────────────────────────────────────────────
+
+    with col_status:
+        if st.session_state.running:
+            _pending  = st.session_state.pending or []
+            _partial  = st.session_state.partial_results or {}
+            _all_ivs  = st.session_state.all_interviews or []
+            _n_done   = len(_partial)
+            _n_total  = len(_all_ivs)
+
+            st.progress(
+                _n_done / _n_total if _n_total else 0.0,
+                text=f"**{_n_done} of {_n_total}** interviews complete",
+            )
+
+            for _fname in _all_ivs:
+                _iid = Path(_fname).stem
+                if _iid in _partial:
+                    st.markdown(f"✅ &nbsp; **{_iid}**")
+                elif _pending and Path(_pending[0]).stem == _iid:
+                    st.markdown(f"🔄 &nbsp; **{_iid}** — processing…")
                 else:
-                    codebook_path.write_text(
-                        codebook_rows_to_yaml(
-                            st.session_state.cb_rows,
-                            st.session_state.cb_code_col,
-                            st.session_state.cb_label_col,
-                            st.session_state.cb_desc_col,
-                        ),
-                        encoding="utf-8",
-                    )
+                    st.markdown(f"⏳ &nbsp; {_iid}")
 
-            with col_status:
-                _progress = st.progress(0.0)
-                with st.status("Analysis in progress…", expanded=True) as _status:
-                    def _progress_cb(v: float) -> None:
-                        _progress.progress(float(v))
+            st.divider()
 
-                    def _status_cb(msg: str) -> None:
-                        _status.update(label=msg)
+            # Honour stop request (queued button click from previous run)
+            if st.session_state.stop_requested:
+                st.session_state.running        = False
+                st.session_state.stop_requested = False
+                st.warning(
+                    "Stopped after last completed interview. "
+                    "Click **↺ Resume last run** in the left column to continue."
+                )
+
+            elif _pending:
+                # Process the next interview
+                _path    = Path(_pending[0])
+                _iid     = _path.stem
+                _cfg     = load_cfg(
+                    Path(st.session_state.codebook_path)
+                    if st.session_state.codebook_path else None
+                )
+                _run_dir = Path(st.session_state.run_dir)
+
+                _cur_stage = [""]   # mutable cell for closure
+
+                with st.status(f"Processing {_iid}…", expanded=True) as _status_box:
+
+                    def _status_cb(msg: str, _box=_status_box) -> None:
+                        _cur_stage[0] = msg
+                        _box.update(label=msg)
                         st.write(msg)
 
-                    run_dir, results = run_pipeline(
-                        interview_paths,
-                        codebook_path,
-                        progress_cb=_progress_cb,
-                        status_cb=_status_cb,
+                    def _tick_cb(tokens: int, elapsed: int, note: str = "",
+                                 _box=_status_box) -> None:
+                        extra = f" · {note}" if note else ""
+                        _box.update(
+                            label=f"{_cur_stage[0]} · {tokens:,} tokens{extra} · {elapsed}s"
+                        )
+
+                    _result = _process_one_interview(
+                        _path, _run_dir, _cfg, _status_cb, _tick_cb
                     )
-                    _status.update(label="Analysis complete", state="complete", expanded=False)
-                _progress.progress(1.0)
+                    _status_box.update(
+                        state="complete",
+                        label=f"✓  {_iid} complete",
+                        expanded=False,
+                    )
 
-        st.session_state.results = results
-        st.session_state.run_dir = run_dir
-        st.session_state.running = False
-        st.rerun()
+                st.session_state.partial_results[_iid] = _result
+                st.session_state.pending = _pending[1:]
+                _write_checkpoint(
+                    _run_dir,
+                    Path(st.session_state.work_dir),
+                    st.session_state.all_interviews,
+                    st.session_state.codebook_path,
+                    list(st.session_state.partial_results.keys()),
+                )
+                st.rerun()
 
-    else:
-        with col_status:
-            if st.session_state.results:
-                st.success("Analysis complete. Switch to the **Outcomes** tab to view results.")
-                st.caption(f"Output: `{st.session_state.run_dir}`")
             else:
-                st.info("Upload transcript files on the left and click **Run Analysis** to begin.")
+                # All interviews done — corpus comparison
+                _cfg     = load_cfg(
+                    Path(st.session_state.codebook_path)
+                    if st.session_state.codebook_path else None
+                )
+                _run_dir    = Path(st.session_state.run_dir)
+                _corpus_dir = _run_dir / "corpus"
+                _corpus_dir.mkdir(exist_ok=True)
+
+                with st.status("Building corpus comparison…", expanded=True) as _status_box:
+
+                    def _corpus_tick(tokens: int, elapsed: int,
+                                     _box=_status_box) -> None:
+                        _box.update(
+                            label=f"Corpus comparison · {tokens:,} tokens · {elapsed}s"
+                        )
+
+                    _sf     = sorted((_run_dir / "analysis").glob("*_summary.json"))
+                    _tf     = sorted((_run_dir / "analysis").glob("*_themes.json"))
+                    _corpus = build_corpus_comparison(_sf, _tf, _cfg, tick_cb=_corpus_tick)
+                    (_corpus_dir / "themes_matrix.json").write_text(
+                        json.dumps(_corpus["matrix"], ensure_ascii=False, indent=2),
+                        encoding="utf-8",
+                    )
+                    (_corpus_dir / "comparison_report.md").write_text(
+                        _corpus["report"], encoding="utf-8"
+                    )
+                    _status_box.update(
+                        state="complete",
+                        label="Corpus comparison complete",
+                        expanded=False,
+                    )
+
+                st.session_state.results = {
+                    **st.session_state.partial_results,
+                    "_corpus": _corpus,
+                }
+                st.session_state.running = False
+                # Remove checkpoint — run fully complete
+                _cp = _run_dir / "checkpoint.json"
+                if _cp.exists():
+                    _cp.unlink()
+                st.rerun()
+
+        elif st.session_state.results:
+            st.success("Analysis complete. Switch to the **Outcomes** tab to view results.")
+            st.caption(f"Output: `{st.session_state.run_dir}`")
+
+        else:
+            st.info(
+                "Upload transcript files on the left and click **Run Analysis** to begin.\n\n"
+                "Progress is saved after each interview — you can stop at any time and resume later."
+            )
 
 # ── Outcomes tab ──────────────────────────────────────────────────────────────
 
@@ -1049,8 +1230,8 @@ with tab_outcomes:
     if not st.session_state.results:
         st.info("Run an analysis first — results will appear here.")
     else:
-        results = st.session_state.results
-        run_dir: Path = st.session_state.run_dir
+        results  = st.session_state.results
+        run_dir: Path = Path(st.session_state.run_dir)
 
         dl_col1, dl_col2 = st.columns(2, gap="large")
         with dl_col1:
@@ -1070,7 +1251,10 @@ with tab_outcomes:
                 mime="text/html",
                 use_container_width=True,
             )
-        st.caption("Open the HTML report in any browser. Use File > Print > Save as PDF for a PDF copy.")
+        st.caption(
+            "Open the HTML report in any browser. "
+            "Use File › Print › Save as PDF for a PDF copy."
+        )
 
         st.subheader("Report highlights")
         st.markdown(

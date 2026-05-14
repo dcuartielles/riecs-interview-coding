@@ -4,6 +4,7 @@ All operate on the anonymised transcript.
 """
 
 import json
+import time
 from pathlib import Path
 
 import ollama
@@ -37,7 +38,7 @@ class Theme(BaseModel):
 class ThemesOutput(BaseModel):
     interview_id: str
     themes: list[Theme]
-    new_codes_proposed: list[str]   # codes not in the predefined codebook
+    new_codes_proposed: list[str]
 
 
 class TopicSentiment(BaseModel):
@@ -49,7 +50,7 @@ class SentimentOutput(BaseModel):
     interview_id: str
     overall_tone: str       # positive | neutral | negative | mixed
     confidence: str         # high | medium | low
-    emotional_register: str # formal | conversational | distressed | enthusiastic | guarded
+    emotional_register: str
     topic_sentiments: list[TopicSentiment]
     notable_passages: list[str]
 
@@ -61,15 +62,35 @@ def _load_prompt(name: str) -> str:
     return p.read_text(encoding="utf-8")
 
 
-def _call(model: str, host: str, timeout: int, prompt: str) -> dict:
+def _stream_call(
+    model: str,
+    host: str,
+    timeout: int,
+    prompt: str,
+    tick_cb=None,
+) -> dict:
+    """Call Ollama with streaming; invoke tick_cb(tokens, elapsed_s) every 40 tokens."""
     client = ollama.Client(host=host)
-    response = client.chat(
+    stream = client.chat(
         model=model,
         messages=[{"role": "user", "content": prompt}],
         format="json",
         options={"temperature": 0.0, "num_predict": 4096},
+        stream=True,
     )
-    return json.loads(response.message.content.strip())
+    parts: list[str] = []
+    n = 0
+    t0 = time.time()
+    for chunk in stream:
+        delta = chunk.message.content
+        if delta:
+            parts.append(delta)
+            n += 1
+            if tick_cb and n % 40 == 0:
+                tick_cb(n, round(time.time() - t0))
+    if tick_cb:
+        tick_cb(n, round(time.time() - t0))
+    return json.loads("".join(parts).strip())
 
 
 def _inject(template: str, **kwargs) -> str:
@@ -81,17 +102,17 @@ def _inject(template: str, **kwargs) -> str:
 
 # --- Stage functions ---
 
-def summarise(text: str, interview_id: str, cfg: dict) -> dict:
-    model = cfg["models"]["summarise"]
-    host = cfg["ollama"]["host"]
+def summarise(text: str, interview_id: str, cfg: dict, tick_cb=None) -> dict:
+    model   = cfg["models"]["summarise"]
+    host    = cfg["ollama"]["host"]
     timeout = cfg["ollama"]["timeout_seconds"]
-    prompt = _inject(
+    prompt  = _inject(
         _load_prompt("summary"),
         INTERVIEW_ID=interview_id,
         WORD_COUNT=len(text.split()),
         TRANSCRIPT=text,
     )
-    raw = _call(model, host, timeout, prompt)
+    raw = _stream_call(model, host, timeout, prompt, tick_cb)
     raw.setdefault("interview_id", interview_id)
     raw.setdefault("word_count", len(text.split()))
     try:
@@ -100,9 +121,9 @@ def summarise(text: str, interview_id: str, cfg: dict) -> dict:
         return raw
 
 
-def extract_themes(text: str, interview_id: str, cfg: dict) -> dict:
-    model = cfg["models"]["themes"]
-    host = cfg["ollama"]["host"]
+def extract_themes(text: str, interview_id: str, cfg: dict, tick_cb=None) -> dict:
+    model   = cfg["models"]["themes"]
+    host    = cfg["ollama"]["host"]
     timeout = cfg["ollama"]["timeout_seconds"]
 
     codebook_str = "none — use open coding"
@@ -121,7 +142,7 @@ def extract_themes(text: str, interview_id: str, cfg: dict) -> dict:
         MIN_FREQUENCY=min_freq,
         TRANSCRIPT=text,
     )
-    raw = _call(model, host, timeout, prompt)
+    raw = _stream_call(model, host, timeout, prompt, tick_cb)
     raw.setdefault("interview_id", interview_id)
     try:
         return ThemesOutput(**raw).model_dump()
@@ -129,18 +150,18 @@ def extract_themes(text: str, interview_id: str, cfg: dict) -> dict:
         return raw
 
 
-def analyse_sentiment(text: str, interview_id: str, cfg: dict) -> dict:
-    model = cfg["models"]["sentiment"]
-    host = cfg["ollama"]["host"]
-    timeout = cfg["ollama"]["timeout_seconds"]
+def analyse_sentiment(text: str, interview_id: str, cfg: dict, tick_cb=None) -> dict:
+    model       = cfg["models"]["sentiment"]
+    host        = cfg["ollama"]["host"]
+    timeout     = cfg["ollama"]["timeout_seconds"]
     granularity = cfg["analysis"].get("sentiment_granularity", "topic")
-    prompt = _inject(
+    prompt      = _inject(
         _load_prompt("sentiment"),
         INTERVIEW_ID=interview_id,
         GRANULARITY=granularity,
         TRANSCRIPT=text,
     )
-    raw = _call(model, host, timeout, prompt)
+    raw = _stream_call(model, host, timeout, prompt, tick_cb)
     raw.setdefault("interview_id", interview_id)
     try:
         return SentimentOutput(**raw).model_dump()
