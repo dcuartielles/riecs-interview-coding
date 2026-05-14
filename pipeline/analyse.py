@@ -109,7 +109,7 @@ def extract_themes(text: str, interview_id: str, cfg: dict) -> dict:
     codebook_path = cfg.get("paths", {}).get("codebook")
     if codebook_path:
         import yaml
-        with open(codebook_path) as f:
+        with open(codebook_path, encoding="utf-8") as f:
             codebook = yaml.safe_load(f)
         codebook_str = json.dumps(codebook, ensure_ascii=False)
 
