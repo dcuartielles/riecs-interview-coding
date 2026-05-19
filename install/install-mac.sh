@@ -139,10 +139,12 @@ for subdir in pipeline prompts output-schema assets .streamlit; do
 done
 
 for f in config.yaml app.py; do
-    src="$SPEC_DIR/$f"
-    if [[ -f "$src" ]]; then
-        cp "$src" "$INSTALL_DIR/"
+    if [[ -f "$SPEC_DIR/$f" ]]; then
+        cp "$SPEC_DIR/$f" "$INSTALL_DIR/"
         ok "Copied $f"
+    elif [[ -f "$SPEC_DIR/pipeline/$f" ]]; then
+        cp "$SPEC_DIR/pipeline/$f" "$INSTALL_DIR/"
+        ok "Copied $f (from pipeline/)"
     else
         warn "Not found, skipping: $f"
     fi
