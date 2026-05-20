@@ -111,7 +111,7 @@ Write-OK "venv created"
 
 Write-Step "Installing Python dependencies"
 & $pip install --upgrade pip --quiet
-& $pip install ollama pydantic pyyaml rich streamlit openpyxl python-docx --quiet
+& $pip install ollama pydantic pyyaml rich streamlit openpyxl python-docx matplotlib --quiet
 Write-OK "Dependencies installed"
 
 # --- 5. Copy pipeline files ----------------------------------------------

@@ -7,6 +7,7 @@ import json
 import re
 import sys
 import tempfile
+import time
 from datetime import datetime
 from pathlib import Path
 
@@ -21,6 +22,13 @@ sys.path.insert(0, str(PIPELINE_DIR))
 from anonymise import anonymise_transcript  # noqa: E402
 from analyse import summarise, extract_themes, analyse_sentiment  # noqa: E402
 from compare import build_corpus_comparison  # noqa: E402
+from timing import (  # noqa: E402
+    estimate_seconds,
+    format_duration,
+    percent_complete,
+    stage_label,
+)
+from charts import theme_cooccurrence_chart, theme_frequency_chart  # noqa: E402
 
 
 # ── RIECS brand CSS ───────────────────────────────────────────────────────────
@@ -378,43 +386,72 @@ def _process_one_interview(
     interview_path: Path,
     run_dir: Path,
     cfg: dict,
-    status_cb,
-    tick_cb,
+    on_stage_start,
+    on_stage_tick,
+    on_stage_done,
 ) -> dict:
     iid          = interview_path.stem
     entities_dir = run_dir / cfg["gdpr"]["entities_subdir"]
     result: dict = {}
 
-    raw_text = read_transcript(interview_path)
+    raw_text   = read_transcript(interview_path)
+    word_count = len(raw_text.split())
+    timings: dict = {}
 
-    status_cb(f"{iid}: anonymising…")
-    anon_text, entity_map = anonymise_transcript(raw_text, cfg, tick_cb=tick_cb)
+    def run_stage(stage: str, fn):
+        estimate = estimate_seconds(stage, word_count)
+        on_stage_start(stage, estimate)
+        t0 = time.time()
+
+        def tick(tokens, elapsed, note=""):
+            on_stage_tick(stage, elapsed, estimate, tokens, note)
+
+        out = fn(tick)
+        duration = time.time() - t0
+        timings[stage] = duration
+        on_stage_done(stage, duration)
+        return out
+
+    anon_text, entity_map = run_stage(
+        "anonymise",
+        lambda tick: anonymise_transcript(raw_text, cfg, tick_cb=tick),
+    )
     (run_dir / "anonymised" / f"{iid}_anon.txt").write_text(anon_text, encoding="utf-8")
     (entities_dir / f"{iid}_entities.json").write_text(
         json.dumps(entity_map, ensure_ascii=False, indent=2), encoding="utf-8"
     )
 
-    status_cb(f"{iid}: summarising…")
-    summary = summarise(anon_text, iid, cfg, tick_cb=tick_cb)
+    summary = run_stage(
+        "summarise",
+        lambda tick: summarise(anon_text, iid, cfg, tick_cb=tick),
+    )
     (run_dir / "analysis" / f"{iid}_summary.json").write_text(
         json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8"
     )
     result["summary"] = summary
 
-    status_cb(f"{iid}: extracting themes…")
-    themes = extract_themes(anon_text, iid, cfg, tick_cb=tick_cb)
+    themes = run_stage(
+        "themes",
+        lambda tick: extract_themes(anon_text, iid, cfg, tick_cb=tick),
+    )
     (run_dir / "analysis" / f"{iid}_themes.json").write_text(
         json.dumps(themes, ensure_ascii=False, indent=2), encoding="utf-8"
     )
     result["themes"] = themes
 
-    status_cb(f"{iid}: analysing sentiment…")
-    sentiment = analyse_sentiment(anon_text, iid, cfg, tick_cb=tick_cb)
+    sentiment = run_stage(
+        "sentiment",
+        lambda tick: analyse_sentiment(anon_text, iid, cfg, tick_cb=tick),
+    )
     (run_dir / "analysis" / f"{iid}_sentiment.json").write_text(
         json.dumps(sentiment, ensure_ascii=False, indent=2), encoding="utf-8"
     )
     result["sentiment"] = sentiment
 
+    (run_dir / "analysis" / f"{iid}_timings.json").write_text(
+        json.dumps(timings, indent=2), encoding="utf-8"
+    )
+    result["_timings"] = timings
     return result
 
 
@@ -424,6 +461,9 @@ def _load_interview_results(iid: str, run_dir: Path) -> dict:
         f = run_dir / "analysis" / f"{iid}{suffix}.json"
         if f.exists():
             result[key] = json.loads(f.read_text(encoding="utf-8"))
+    timings_f = run_dir / "analysis" / f"{iid}_timings.json"
+    if timings_f.exists():
+        result["_timings"] = json.loads(timings_f.read_text(encoding="utf-8"))
     return result
 
 
@@ -543,6 +583,22 @@ a{color:var(--teal);text-decoration:none}
 """
 
 
+def _interview_stats(interviews: dict) -> list[dict]:
+    """Per-interview stats for the report's 'Files Evaluated' section."""
+    stats = []
+    for iid, data in interviews.items():
+        summary = data.get("summary", {}) or {}
+        themes  = (data.get("themes", {}) or {}).get("themes", []) or []
+        timings = data.get("_timings", {}) or {}
+        stats.append({
+            "id":       iid,
+            "words":    summary.get("word_count"),
+            "n_themes": len(themes),
+            "seconds":  sum(timings.values()) if timings else None,
+        })
+    return stats
+
+
 def generate_html_report(run_dir: Path, results: dict) -> str:
     now      = datetime.now().strftime("%Y-%m-%d %H:%M")
     corpus   = results.get("_corpus", {})
@@ -560,6 +616,27 @@ def generate_html_report(run_dir: Path, results: dict) -> str:
         f'<p class="report-meta">Generated {now} &mdash; {len(interviews)} interview(s)'
         f' &mdash; output: {run_dir}</p>'
     ]
+
+    stats = _interview_stats(interviews)
+    if stats:
+        rows = ""
+        for s in stats:
+            secs = format_duration(s["seconds"]) if s["seconds"] else "&mdash;"
+            rows += (
+                f'<tr><td>{s["id"]}</td>'
+                f'<td>{s["words"] if s["words"] is not None else "&mdash;"}</td>'
+                f'<td>{s["n_themes"]}</td><td>{secs}</td></tr>'
+            )
+        if corpus.get("_duration"):
+            rows += (
+                f'<tr><td><em>Corpus comparison</em></td><td>&mdash;</td>'
+                f'<td>&mdash;</td><td>{format_duration(corpus["_duration"])}</td></tr>'
+            )
+        parts.append(
+            f'<h2>Files Evaluated</h2><table>'
+            f'<tr><th>Interview</th><th>Words</th><th>Themes</th>'
+            f'<th>Processing time</th></tr>{rows}</table>'
+        )
 
     if corpus.get("report"):
         parts.append(f'<h2>Executive Summary</h2>{_md_to_html(corpus["report"])}')
@@ -579,6 +656,24 @@ def generate_html_report(run_dir: Path, results: dict) -> str:
             for code, info in matrix_codes.items()
         )
         parts.append(f'<h2>Theme Matrix</h2><table>{header}{rows}</table>')
+
+    if matrix_codes:
+        freq_png = theme_frequency_chart(matrix_codes)
+        if freq_png:
+            b64 = base64.b64encode(freq_png).decode()
+            parts.append(
+                f'<h2>Theme Relevance</h2>'
+                f'<img src="data:image/png;base64,{b64}" '
+                f'style="max-width:100%;height:auto" alt="Theme relevance chart">'
+            )
+        cooc_png = theme_cooccurrence_chart(matrix_codes)
+        if cooc_png:
+            b64 = base64.b64encode(cooc_png).decode()
+            parts.append(
+                f'<h2>Theme Co-occurrence</h2>'
+                f'<img src="data:image/png;base64,{b64}" '
+                f'style="max-width:100%;height:auto" alt="Theme co-occurrence map">'
+            )
 
     for iid, data in interviews.items():
         parts.append(
@@ -668,7 +763,7 @@ def generate_html_report(run_dir: Path, results: dict) -> str:
 
 def generate_docx_report(run_dir: Path, results: dict) -> bytes:
     from docx import Document as DocxDoc
-    from docx.shared import Pt
+    from docx.shared import Inches, Pt
     from docx.enum.text import WD_ALIGN_PARAGRAPH
 
     doc = DocxDoc()
@@ -680,6 +775,29 @@ def generate_docx_report(run_dir: Path, results: dict) -> bytes:
     t.alignment = WD_ALIGN_PARAGRAPH.CENTER
     doc.add_paragraph(f"Generated: {now}").italic = True
     doc.add_paragraph(f"Output: {run_dir}").italic = True
+
+    stats = _interview_stats(interviews)
+    if stats:
+        doc.add_heading("Files Evaluated", 1)
+        tbl = doc.add_table(rows=1, cols=4)
+        tbl.style = "Table Grid"
+        for i, head in enumerate(["Interview", "Words", "Themes", "Processing time"]):
+            cell = tbl.rows[0].cells[i]
+            cell.text = head
+            for r in cell.paragraphs[0].runs:
+                r.bold = True
+        for s in stats:
+            row = tbl.add_row().cells
+            row[0].text = s["id"]
+            row[1].text = str(s["words"]) if s["words"] is not None else "—"
+            row[2].text = str(s["n_themes"])
+            row[3].text = format_duration(s["seconds"]) if s["seconds"] else "—"
+        if corpus.get("_duration"):
+            row = tbl.add_row().cells
+            row[0].text = "Corpus comparison"
+            row[1].text = "—"
+            row[2].text = "—"
+            row[3].text = format_duration(corpus["_duration"])
 
     if corpus.get("report"):
         doc.add_heading("Executive Summary", 1)
@@ -714,6 +832,16 @@ def generate_docx_report(run_dir: Path, results: dict) -> bytes:
             for i, iid in enumerate(iids):
                 row[2 + i].text = str(info["by_interview"].get(iid, ""))
             row[ncols - 1].text = str(info.get("total_interviews", ""))
+
+    if matrix_codes:
+        freq_png = theme_frequency_chart(matrix_codes)
+        if freq_png:
+            doc.add_heading("Theme Relevance", 1)
+            doc.add_picture(io.BytesIO(freq_png), width=Inches(6.2))
+        cooc_png = theme_cooccurrence_chart(matrix_codes)
+        if cooc_png:
+            doc.add_heading("Theme Co-occurrence", 1)
+            doc.add_picture(io.BytesIO(cooc_png), width=Inches(5.6))
 
     for iid, data in interviews.items():
         doc.add_heading(f"Interview: {iid}", 1)
@@ -1133,25 +1261,40 @@ with tab_progress:
                 )
                 _run_dir = Path(st.session_state.run_dir)
 
-                _cur_stage = [""]   # mutable cell for closure
-
                 with st.status(f"Processing {_iid}…", expanded=True) as _status_box:
 
-                    def _status_cb(msg: str, _box=_status_box) -> None:
-                        _cur_stage[0] = msg
-                        _box.update(label=msg)
-                        st.write(msg)
+                    _stage_bar = st.empty()
 
-                    def _tick_cb(tokens: int, elapsed: int, note: str = "",
-                                 _box=_status_box) -> None:
+                    def _on_stage_start(stage, estimate, _box=_status_box,
+                                        _bar=_stage_bar) -> None:
+                        label = stage_label(stage)
+                        _box.update(label=f"{_iid}: {label}…")
+                        _bar.progress(
+                            0.0,
+                            text=f"{label} — 0%  ·  est. {format_duration(estimate)}",
+                        )
+
+                    def _on_stage_tick(stage, elapsed, estimate, tokens, note,
+                                       _bar=_stage_bar) -> None:
+                        pct   = percent_complete(elapsed, estimate)
                         extra = f" · {note}" if note else ""
-                        _box.update(
-                            label=f"{_cur_stage[0]} · {tokens:,} tokens{extra} · {elapsed}s"
+                        _bar.progress(
+                            pct,
+                            text=f"{stage_label(stage)} — {pct * 100:.0f}%  ·  "
+                                 f"{tokens:,} tokens{extra}  ·  {elapsed}s",
+                        )
+
+                    def _on_stage_done(stage, duration) -> None:
+                        st.write(
+                            f"✅ &nbsp; **{stage_label(stage)}** — "
+                            f"{format_duration(duration)}"
                         )
 
                     _result = _process_one_interview(
-                        _path, _run_dir, _cfg, _status_cb, _tick_cb
+                        _path, _run_dir, _cfg,
+                        _on_stage_start, _on_stage_tick, _on_stage_done,
                     )
+                    _stage_bar.empty()
                     _status_box.update(
                         state="complete",
                         label=f"✓  {_iid} complete",
@@ -1181,15 +1324,26 @@ with tab_progress:
 
                 with st.status("Building corpus comparison…", expanded=True) as _status_box:
 
+                    _corpus_bar = st.empty()
+                    _corpus_est = estimate_seconds(
+                        "compare",
+                        n_interviews=len(st.session_state.partial_results),
+                    )
+                    _corpus_t0  = time.time()
+
                     def _corpus_tick(tokens: int, elapsed: int,
-                                     _box=_status_box) -> None:
-                        _box.update(
-                            label=f"Corpus comparison · {tokens:,} tokens · {elapsed}s"
+                                     _bar=_corpus_bar, _est=_corpus_est) -> None:
+                        pct = percent_complete(elapsed, _est)
+                        _bar.progress(
+                            pct,
+                            text=f"Corpus comparison — {pct * 100:.0f}%  ·  "
+                                 f"{tokens:,} tokens  ·  {elapsed}s",
                         )
 
                     _sf     = sorted((_run_dir / "analysis").glob("*_summary.json"))
                     _tf     = sorted((_run_dir / "analysis").glob("*_themes.json"))
                     _corpus = build_corpus_comparison(_sf, _tf, _cfg, tick_cb=_corpus_tick)
+                    _corpus["_duration"] = time.time() - _corpus_t0
                     (_corpus_dir / "themes_matrix.json").write_text(
                         json.dumps(_corpus["matrix"], ensure_ascii=False, indent=2),
                         encoding="utf-8",
@@ -1197,9 +1351,15 @@ with tab_progress:
                     (_corpus_dir / "comparison_report.md").write_text(
                         _corpus["report"], encoding="utf-8"
                     )
+                    _corpus_bar.empty()
+                    st.write(
+                        f"✅ &nbsp; **Corpus comparison** — "
+                        f"{format_duration(_corpus['_duration'])}"
+                    )
                     _status_box.update(
                         state="complete",
-                        label="Corpus comparison complete",
+                        label=f"Corpus comparison — "
+                              f"{format_duration(_corpus['_duration'])}",
                         expanded=False,
                     )
 

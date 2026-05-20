@@ -17,14 +17,46 @@ from pathlib import Path
 
 import yaml
 from rich.console import Console
-from rich.progress import Progress, SpinnerColumn, TextColumn, TimeElapsedColumn
+from rich.progress import BarColumn, Progress, TextColumn, TimeElapsedColumn
 from rich.table import Table
 
 from anonymise import anonymise_transcript
 from analyse import summarise, extract_themes, analyse_sentiment
 from compare import build_corpus_comparison
+from timing import estimate_seconds, format_duration, stage_label
 
 console = Console()
+
+
+def _run_stage(stage: str, estimate: float, fn):
+    """Run one pipeline stage with a live progress bar.
+
+    The bar fills against the time estimate; on completion the actual
+    duration is printed. Returns (stage result, elapsed seconds).
+    """
+    total = max(estimate, 1.0)
+    t0 = time.time()
+    with Progress(
+        TextColumn("  [bold]{task.description}"),
+        BarColumn(bar_width=32),
+        TextColumn("{task.percentage:>3.0f}%"),
+        TimeElapsedColumn(),
+        console=console,
+        transient=True,
+    ) as progress:
+        task = progress.add_task(stage_label(stage), total=total)
+
+        def tick(tokens, elapsed, note=""):
+            progress.update(task, completed=min(elapsed, total * 0.99))
+
+        result = fn(tick)
+        progress.update(task, completed=total)
+    seconds = time.time() - t0
+    console.print(
+        f"  [green]✓[/green] {stage_label(stage)} "
+        f"[dim]— {format_duration(seconds)}[/dim]"
+    )
+    return result, seconds
 
 
 def load_config(config_path: Path) -> dict:
@@ -58,22 +90,27 @@ def run_pipeline(cfg: dict, interviews: list[Path], run_dir: Path, stages: set[s
         t_start = time.time()
 
         raw_text = interview_path.read_text(encoding="utf-8")
+        word_count = len(raw_text.split())
         row = [interview_id, "—", "—", "—", "—"]
+        timings: dict[str, float] = {}
 
         try:
             # Stage 1 — anonymise
             anon_text, entity_map = None, None
             if "anonymise" in stages:
-                console.print(f"  [dim]anonymising...[/dim]")
-                anon_text, entity_map = anonymise_transcript(raw_text, cfg)
+                (anon_text, entity_map), dur = _run_stage(
+                    "anonymise", estimate_seconds("anonymise", word_count),
+                    lambda tick: anonymise_transcript(raw_text, cfg, tick_cb=tick),
+                )
                 (run_dir / "anonymised" / f"{interview_id}_anon.txt").write_text(
                     anon_text, encoding="utf-8"
                 )
                 (entities_dir / f"{interview_id}_entities.json").write_text(
                     json.dumps(entity_map, ensure_ascii=False, indent=2), encoding="utf-8"
                 )
+                timings["anonymise"] = dur
                 row[1] = "[green]✓[/green]"
-                log({"ts": datetime.utcnow().isoformat(), "id": interview_id, "stage": "anonymise", "entities": len(entity_map)})
+                log({"ts": datetime.utcnow().isoformat(), "id": interview_id, "stage": "anonymise", "entities": len(entity_map), "duration_s": round(dur, 1)})
             else:
                 anon_path = run_dir / "anonymised" / f"{interview_id}_anon.txt"
                 if anon_path.exists():
@@ -83,37 +120,51 @@ def run_pipeline(cfg: dict, interviews: list[Path], run_dir: Path, stages: set[s
 
             # Stage 2 — summarise
             if "summarise" in stages:
-                console.print(f"  [dim]summarising...[/dim]")
-                summary = summarise(working_text, interview_id, cfg)
+                summary, dur = _run_stage(
+                    "summarise", estimate_seconds("summarise", word_count),
+                    lambda tick: summarise(working_text, interview_id, cfg, tick_cb=tick),
+                )
                 (run_dir / "analysis" / f"{interview_id}_summary.json").write_text(
                     json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8"
                 )
+                timings["summarise"] = dur
                 row[2] = "[green]✓[/green]"
-                log({"ts": datetime.utcnow().isoformat(), "id": interview_id, "stage": "summarise"})
+                log({"ts": datetime.utcnow().isoformat(), "id": interview_id, "stage": "summarise", "duration_s": round(dur, 1)})
 
             # Stage 3 — themes
             if "themes" in stages:
-                console.print(f"  [dim]extracting themes...[/dim]")
-                themes = extract_themes(working_text, interview_id, cfg)
+                themes, dur = _run_stage(
+                    "themes", estimate_seconds("themes", word_count),
+                    lambda tick: extract_themes(working_text, interview_id, cfg, tick_cb=tick),
+                )
                 (run_dir / "analysis" / f"{interview_id}_themes.json").write_text(
                     json.dumps(themes, ensure_ascii=False, indent=2), encoding="utf-8"
                 )
+                timings["themes"] = dur
                 row[3] = "[green]✓[/green]"
-                log({"ts": datetime.utcnow().isoformat(), "id": interview_id, "stage": "themes", "n_themes": len(themes.get("themes", []))})
+                log({"ts": datetime.utcnow().isoformat(), "id": interview_id, "stage": "themes", "n_themes": len(themes.get("themes", [])), "duration_s": round(dur, 1)})
 
             # Stage 4 — sentiment
             if "sentiment" in stages:
-                console.print(f"  [dim]analysing sentiment...[/dim]")
-                sentiment = analyse_sentiment(working_text, interview_id, cfg)
+                sentiment, dur = _run_stage(
+                    "sentiment", estimate_seconds("sentiment", word_count),
+                    lambda tick: analyse_sentiment(working_text, interview_id, cfg, tick_cb=tick),
+                )
                 (run_dir / "analysis" / f"{interview_id}_sentiment.json").write_text(
                     json.dumps(sentiment, ensure_ascii=False, indent=2), encoding="utf-8"
                 )
+                timings["sentiment"] = dur
                 row[4] = "[green]✓[/green]"
-                log({"ts": datetime.utcnow().isoformat(), "id": interview_id, "stage": "sentiment"})
+                log({"ts": datetime.utcnow().isoformat(), "id": interview_id, "stage": "sentiment", "duration_s": round(dur, 1)})
 
         except Exception as exc:
             console.print(f"  [red]ERROR: {exc}[/red]")
             log({"ts": datetime.utcnow().isoformat(), "id": interview_id, "error": str(exc)})
+
+        if timings:
+            (run_dir / "analysis" / f"{interview_id}_timings.json").write_text(
+                json.dumps(timings, indent=2), encoding="utf-8"
+            )
 
         elapsed = round(time.time() - t_start, 1)
         row.append(str(elapsed))
@@ -136,7 +187,10 @@ def run_comparison(cfg: dict, run_dir: Path) -> None:
         return
 
     console.print(f"  Comparing {len(summaries)} interview(s)...")
-    result = build_corpus_comparison(summaries, themes, cfg)
+    result, _ = _run_stage(
+        "compare", estimate_seconds("compare", n_interviews=len(summaries)),
+        lambda tick: build_corpus_comparison(summaries, themes, cfg, tick_cb=tick),
+    )
     (corpus_dir / "themes_matrix.json").write_text(
         json.dumps(result["matrix"], ensure_ascii=False, indent=2), encoding="utf-8"
     )

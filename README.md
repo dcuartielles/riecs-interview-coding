@@ -127,6 +127,7 @@ See [`00-hardware-scenarios.md`](00-hardware-scenarios.md) for full benchmarks a
 | `streamlit` | ≥ 1.35 | Web UI |
 | `openpyxl` | ≥ 3.1 | Excel labelbook parsing |
 | `python-docx` | ≥ 1.1 | Word transcript reading & report export |
+| `matplotlib` | ≥ 3.7 | Theme relevance & co-occurrence charts in reports |
 
 ---
 
