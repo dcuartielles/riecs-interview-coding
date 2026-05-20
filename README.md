@@ -112,7 +112,7 @@ Runs once after all interviews are processed. Builds a theme-frequency matrix ac
 
 The Mac mini M4 Pro 64 GB (≈ €2,200–2,700) is the recommended production machine: the 70B model fits entirely in unified memory, zero GPU driver complexity, fanless, and runs sustained overnight batches on ~40 W.
 
-See [`00-hardware-scenarios.md`](00-hardware-scenarios.md) for full benchmarks and procurement arguments.
+See [`00-hardware-scenarios.md`](00-hardware-scenarios.md) for full benchmarks and procurement arguments, and [`Benchmark.md`](Benchmark.md) for measured real-world results on a Mac mini M4 Pro 64 GB.
 
 ### Software dependencies
 
@@ -382,7 +382,8 @@ spec/                        ← this repository
 │   ├── install-mac.sh
 │   └── install-windows.ps1
 ├── 01-architecture.md       ← detailed component spec
-└── 00-hardware-scenarios.md ← procurement benchmarks and model selection guide
+├── 00-hardware-scenarios.md ← procurement benchmarks and model selection guide
+└── Benchmark.md             ← measured Ollama benchmark (Mac mini M4 Pro 64 GB)
 ```
 
 ---
