@@ -8,6 +8,10 @@ The tool runs in one of two modes, switched from the **Analysis mode** toggle at
 - **Interviews** — anonymise → summarise → thematic coding (optionally against a labelbook) → sentiment → cross-interview comparison. Tables and charts are organised by theme.
 - **Workshop templates** — anonymise (optional) → summarise → per-question coverage / sentiment / emerging themes → cross-document comparison. Inputs are workshop description sheets plus one or more text/Word files listing research questions; the labelbook block is hidden. Tables and charts are organised by question.
 
+| Interviews mode | Workshop templates mode |
+|:---:|:---:|
+| ![Interviews mode upload screen](assets/screenshots/01_progress_interviews_empty.png) | ![Workshop templates mode upload screen](assets/screenshots/02_progress_workshop_empty.png) |
+
 Both modes share Stages 1, 2 and 5 of the pipeline. Mode B replaces thematic coding with a question-driven Stage 3 (`prompts/questions.txt` → `pipeline/questions.py`) and folds sentiment into that same stage.
 
 ---
@@ -203,6 +207,8 @@ Workshop-mode reports include a **Demographics** section with four sub-blocks:
 
 If `*_demographics.json` files don't exist (older runs), the section is omitted.
 
+![Demographics — Participants & modality table for 42 workshops](assets/screenshots/09_demographics.png)
+
 ### Caveats section
 
 A data-driven **Caveats** section sits right after the Executive Summary on workshop reports. It is computed from the run — not a generic disclaimer — and surfaces, e.g.:
@@ -214,15 +220,27 @@ A data-driven **Caveats** section sits right after the Executive Summary on work
 - The number of workshop × question cells with `not_answered` coverage.
 - The model used for each stage (corpus comparison defaults to `llama3.1:70b`).
 
+![Caveats section — data-driven disclaimers for a real 42-workshop run](assets/screenshots/05_caveats.png)
+
 ### Coverage matrix and charts
 
 - **Transposed coverage matrix** — rows = workshop IDs (sorted), columns = `q01..qNN`. Cells use a traffic-light palette: green (`answered`), yellow (`partially_answered`), red (`not_answered`). The cell also carries a glyph (`✓` / `½` / `—`) so the table is legible in print and for colour-blind viewers. A legend and Question key follow the table.
 - **Coverage chart** — horizontal bar chart of total coverage score per question, labelled with `q01..qNN` (full text is in the Question key).
 - **Co-occurrence diagram** — questions on a ring, edges where they share documents. Node sizes are min/max-normalised to a fixed point² range so corpus size doesn't blow them up, and labels are pushed to a larger radius so they never overlap nodes.
 
+![Coverage matrix — 42 workshops × 13 questions with traffic-light cells](assets/screenshots/06_coverage_matrix.png)
+
+| Coverage chart | Co-occurrence diagram |
+|:---:|:---:|
+| ![Question coverage bar chart](assets/screenshots/07_coverage_chart.png) | ![Question co-occurrence ring](assets/screenshots/08_cooccurrence.png) |
+
 ### Loading a previous run
 
 The **Outcomes** tab shows a "Load a previous run" dropdown when no run is active in the current session. Every directory under `output/` that contains `corpus/comparison_report.md` is listed with its mode and document count; clicking **Load** re-hydrates the per-doc JSONs, matrix, report, duplicates list and workshop_id map so the in-app Outcomes view + downloadable reports work exactly as they did for an in-session run.
+
+| Run picker | Loaded view |
+|:---:|:---:|
+| ![Outcomes tab — Load a previous run dropdown](assets/screenshots/03_outcomes_load_picker.png) | ![Outcomes tab with a loaded run, research questions redacted](assets/screenshots/04_outcomes_loaded_workshop.png) |
 
 ---
 
