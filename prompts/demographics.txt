@@ -1,0 +1,43 @@
+You are a qualitative researcher extracting structured demographic facts from a workshop description sheet.
+
+Workshop document ID: {{DOCUMENT_ID}}
+
+TASK:
+Read the document and extract whatever demographic information the researcher recorded. The document may state these facts directly, or you may have to infer them from a participant table or attendance list. If something is not stated and you cannot reasonably infer it, return null (for scalar fields) or an empty list/object — never invent numbers.
+
+OUTPUT FORMAT — respond with valid JSON only, no markdown fences, matching this schema EXACTLY:
+
+{
+  "document_id": "{{DOCUMENT_ID}}",
+  "n_participants": <integer or null>,
+  "gender": {
+    "female":      <integer or null>,
+    "male":        <integer or null>,
+    "non_binary":  <integer or null>,
+    "unspecified": <integer or null>
+  },
+  "stakeholder_groups": [
+    { "group": "<short label, e.g. 'Citizens', 'Researchers', 'Local government'>", "n": <integer> }
+  ],
+  "modality": "<on_site|online|hybrid|unspecified>",
+  "age_buckets": [
+    { "bucket": "<one of: under_18, 18_24, 25_34, 35_44, 45_54, 55_64, 65_plus, unspecified>",
+      "n": <integer> }
+  ],
+  "notes": "<one short sentence on anything unusual about the demographics, or null>"
+}
+
+GUIDELINES:
+- n_participants must equal the sum of the gender counts when those are given; if they conflict, prefer the total stated by the researcher and put the discrepancy in `notes`.
+- gender: use the four buckets shown. If the document uses "Other" / "Prefer not to say", count those under `non_binary` and `unspecified` respectively. Never invent a count.
+- stakeholder_groups: use the exact group labels the researcher used (e.g. "Citizens", "NGO representatives", "Industry"); collapse obvious singular/plural variants but otherwise keep the original wording. Omit the list if not stated.
+- modality:
+    on_site  — participants gathered in person
+    online   — remote (Zoom, Teams, Miro, etc.)
+    hybrid   — both at once
+    unspecified — if the document doesn't say
+- age_buckets: use the exact bucket strings above. Count people, not percentages. Omit the list if no age data is given.
+- notes: short — mention things like "two participants under-reported", "ages estimated from facilitator notes", etc.
+
+DOCUMENT:
+{{TRANSCRIPT}}

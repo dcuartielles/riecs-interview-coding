@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "WorkshopDemographicsResult",
+  "description": "Per-document demographic facts extracted from a workshop description sheet",
+  "type": "object",
+  "properties": {
+    "document_id":    { "type": "string" },
+    "n_participants": { "type": ["integer", "null"] },
+    "gender": {
+      "type": "object",
+      "properties": {
+        "female":      { "type": ["integer", "null"] },
+        "male":        { "type": ["integer", "null"] },
+        "non_binary":  { "type": ["integer", "null"] },
+        "unspecified": { "type": ["integer", "null"] }
+      }
+    },
+    "stakeholder_groups": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "group": { "type": "string" },
+          "n":     { "type": "integer" }
+        },
+        "required": ["group", "n"]
+      }
+    },
+    "modality": {
+      "type": "string",
+      "enum": ["on_site", "online", "hybrid", "unspecified"]
+    },
+    "age_buckets": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "bucket": {
+            "type": "string",
+            "enum": ["under_18", "18_24", "25_34", "35_44", "45_54", "55_64", "65_plus", "unspecified"]
+          },
+          "n": { "type": "integer" }
+        },
+        "required": ["bucket", "n"]
+      }
+    },
+    "notes": { "type": ["string", "null"] }
+  },
+  "required": ["document_id"]
+}

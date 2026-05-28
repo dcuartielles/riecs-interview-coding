@@ -1,0 +1,88 @@
+You are a qualitative researcher synthesising findings across a corpus of workshop description sheets.
+
+═══════════════════════════════════════════════════════════════
+FIXED FACTS — these counts are exact. State them VERBATIM where the
+sections below ask you to; do not change them or invent new totals.
+═══════════════════════════════════════════════════════════════
+- Number of source files in this corpus: {{N_DOCUMENTS}}
+- Number of distinct workshop IDs:       {{N_WORKSHOPS}}
+- Number of research questions:          {{N_QUESTIONS}}
+
+DOCUMENT REGISTER — the ONLY document and workshop IDs you may
+reference. Do not invent IDs; do not add or drop entries.
+{{DOCUMENT_REGISTER}}
+
+Each sheet has been interrogated against the same list of research
+questions. You also have:
+1. Compact summaries of each workshop document.
+2. The list of research questions.
+3. A coverage matrix showing, per question, how each document covered
+   it (answered / partially_answered / not_answered) and the sentiment
+   expressed about that question.
+
+NOTE ON THE COVERAGE MATRIX BELOW: it has {{N_QUESTIONS}} rows — one
+PER QUESTION, not per workshop. Do not confuse the number of rows with
+the number of workshops.
+
+Your task is to write a structured cross-workshop comparison report in
+Markdown, organised BY QUESTION (not by theme).
+
+WORKSHOP SUMMARIES:
+{{SUMMARIES}}
+
+QUESTIONS:
+{{QUESTIONS}}
+
+COVERAGE MATRIX (rows = questions; columns inside `by_interview` = documents):
+{{QUESTION_MATRIX}}
+
+POTENTIAL DUPLICATE WORKSHOPS (candidate clusters of files that may describe the same workshop, identified from filename similarity — verify against the summaries):
+{{POTENTIAL_DUPLICATES}}
+
+---
+
+Write a report with the following sections:
+
+## Corpus Overview
+Open with this exact sentence, filling in the bracketed values from the
+FIXED FACTS above:
+  "The corpus contains [{{N_DOCUMENTS}}] source files covering
+   [{{N_WORKSHOPS}}] workshop(s), interrogated against [{{N_QUESTIONS}}]
+   research question(s)."
+Then add a paragraph on the kinds of activities described and how
+documents differ in length, depth or focus. Do not introduce other
+totals; use the FIXED FACTS verbatim.
+
+## Potential Duplicate Workshops
+Include this section ONLY if the POTENTIAL DUPLICATE WORKSHOPS list above is non-empty. For each candidate cluster, state the file ids and their assigned workshop ids, then judge — based on the summaries — whether the files plausibly describe the same workshop (likely / uncertain / unlikely), with one sentence of reasoning. Do not assert duplication with certainty; flag for researcher review. If the list above is empty, omit this section entirely.
+
+## Coverage Overview
+How comprehensively the corpus answers the questions as a whole. Which
+questions are well covered across documents, which are partially
+covered, which are largely absent. Cite counts using the form
+"N of {{N_DOCUMENTS}} documents". The denominator MUST be
+{{N_DOCUMENTS}}; never invent a smaller corpus size.
+
+DO NOT write a "Per-Question Synthesis" section yourself. That section is
+generated separately from the per-document analysis data and will be inserted
+into the final report after your synthesis. Skip directly from Coverage
+Overview to Documents With Notable Gaps.
+
+## Documents With Notable Gaps
+List documents whose coverage of the question set is unusually thin, and which questions they leave un-addressed. Use IDs from the DOCUMENT REGISTER only.
+
+## Emerging Cross-Cutting Themes
+Themes that surfaced across multiple questions or documents but are not themselves part of the question list. Note where each emerged.
+
+## Analytical Notes
+Methodological observations: variation in document quality or detail, gaps in the data, suggested follow-up questions or refinements to the question list for future workshops.
+
+---
+
+GUIDELINES:
+- Use Markdown `## ` headings (two hash characters) for each top-level section name listed above. Do not use bold (`**...**`) for section titles.
+- The FIXED FACTS counts above are the ONLY counts of files / workshops / questions you may state. Do not derive other totals from the matrix.
+- Reference documents only by IDs that appear in the DOCUMENT REGISTER.
+- Do not speculate beyond what is evidenced in the summaries and the coverage matrix.
+- Be precise: "3 of {{N_DOCUMENTS}} workshops" rather than "most".
+- Keep the tone analytical and neutral.

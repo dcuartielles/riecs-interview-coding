@@ -13,6 +13,8 @@ STAGE_BASELINE_SECONDS = {
     "anonymise": 292.0,
     "summarise": 37.0,
     "themes": 360.0,
+    "questions": 360.0,    # workshop-mode counterpart of themes; same order of magnitude
+    "demographics": 45.0,  # structured extraction; small output, fast
     "sentiment": 42.0,
     "compare": 107.0,
 }
@@ -22,12 +24,15 @@ STAGE_LABELS = {
     "anonymise": "Anonymise",
     "summarise": "Summarise",
     "themes": "Themes",
+    "questions": "Questions",
+    "demographics": "Demographics",
     "sentiment": "Sentiment",
     "compare": "Corpus comparison",
 }
 
-# Order the per-interview stages run in.
+# Order the per-document stages run in, per mode.
 INTERVIEW_STAGES = ["anonymise", "summarise", "themes", "sentiment"]
+WORKSHOP_STAGES  = ["anonymise", "summarise", "questions", "demographics"]
 
 
 def estimate_seconds(stage: str, word_count: int | None = None,

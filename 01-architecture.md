@@ -1,8 +1,13 @@
-# System Architecture — Offline Interview Analysis
+# System Architecture — Offline Interview & Workshop Analysis
 
 ## Overview
 
-A fully local, GDPR-compliant pipeline that takes plain-text interview transcripts, anonymises them, extracts structured analysis, and produces cross-interview comparison reports — all without any network calls.
+A fully local, GDPR-compliant pipeline that takes either **interview transcripts** or **workshop description sheets**, anonymises them (optional in workshop mode), extracts structured analysis, and produces cross-document comparison reports — all without any network calls.
+
+The same pipeline supports two modes, switched in the UI via the **Analysis mode** toggle (or `--mode` on the CLI):
+
+- **Interviews** — thematic coding against a labelbook; cross-interview comparison organised by theme.
+- **Workshop templates** — interrogate each sheet against a fixed list of research questions; cross-document comparison organised by question.
 
 ```
 interviews/          (raw transcripts, restricted access)
@@ -81,7 +86,7 @@ Output: `*_summary.json` — validated against `output-schema/interview_result.j
 
 Fields: `interview_id`, `word_count`, `estimated_duration_min`, `key_topics[]`, `main_positions[]`, `notable_quotes[]`, `methodological_notes`
 
-#### Stage 3 — Thematic coding
+#### Stage 3 — Thematic coding (interviews mode)
 
 Input: anonymised transcript  
 Output: `*_themes.json`
@@ -90,7 +95,14 @@ Fields per theme: `code` (short slug), `label`, `description`, `frequency` (appr
 
 A predefined codebook can be supplied in `config.yaml`; the model then maps to existing codes and may propose new ones.
 
-#### Stage 4 — Sentiment and tone
+#### Stage 3' — Question-driven analysis (workshop mode)
+
+Input: anonymised (or raw) workshop sheet  
+Output: `*_questions.json` — validated against `output-schema/workshop_result.json`
+
+For every research question in `questions.yaml`, the model returns: `coverage` (`answered` / `partially_answered` / `not_answered`), a one-paragraph `answer`, `supporting_quotes[]`, a per-question `sentiment`, and 0–4 `emerging_themes` worth tracking across the corpus. The document's `overall_tone` and `emotional_register` are also recorded — so workshop mode does **not** run the separate Stage 4.
+
+#### Stage 4 — Sentiment and tone (interviews mode only)
 
 Input: anonymised transcript  
 Output: `*_sentiment.json`
@@ -99,10 +111,11 @@ Fields: `overall_tone` (positive/neutral/negative/mixed), `confidence_score`, `e
 
 #### Stage 5 — Corpus comparison (batch)
 
-Input: all `*_summary.json` + `*_themes.json` files  
-Output: `corpus/themes_matrix.json` + `corpus/comparison_report.md`
+Input — interviews: all `*_summary.json` + `*_themes.json`, prompt `prompts/compare.txt`, output `corpus/themes_matrix.json` + `corpus/comparison_report.md`.
 
-Builds a theme-frequency matrix across interviews, identifies consensus and divergent positions, and writes a synthesis narrative. Runs once after all interviews are processed.
+Input — workshop: all `*_summary.json` + `*_questions.json`, prompt `prompts/compare_workshop.txt`, output `corpus/questions_matrix.json` + `corpus/comparison_report.md`.
+
+Both modes use the same matrix shape `{codes: {key: {label, by_interview, total_interviews}}}` so the chart code and report-table builders are shared. In workshop mode, `key` is the question id (`q01…`), `label` is the question text, and `by_interview` values are coverage labels.
 
 ---
 
@@ -124,29 +137,45 @@ raw transcripts  ──read──>  pipeline  ──write──>  anonymised/  (
 ## Configuration overview (`config.yaml`)
 
 ```yaml
+mode: interviews          # or 'workshop'
+
 models:
   anonymise: llama3.1:8b
   summarise: llama3.1:8b
   themes:    llama3.1:8b
+  questions: llama3.1:8b  # workshop-mode counterpart of themes
   sentiment: llama3.1:8b
   compare:   llama3.1:8b
 
 paths:
   interviews: ./interviews
   output:     ./output
+  codebook:   null        # path to YAML codebook (interviews mode), or null
+  questions:  null        # path to questions.yaml (workshop mode — required)
 
 chunking:
   max_words_per_chunk: 4000
   overlap_words: 200
 
 analysis:
-  codebook: null          # path to YAML codebook, or null for open coding
   language: en
-  anonymise_dates: true   # set false to keep relative time references
+  anonymise_dates: true             # set false to keep relative time references
+  anonymise_workshop_sheets: true   # run Stage 1 on workshop sheets (workshop mode)
 
 gdpr:
   entities_subdir: entities_CONFIDENTIAL   # kept outside anonymised/
   log_pii: false
+```
+
+### `questions.yaml` format
+
+Workshop mode reads a list of research questions written into the run's `_work/questions.yaml` by the UI from one or more uploaded `.txt`/`.docx` files (one question per non-empty line, with optional `Q1:` / `1.` prefixes stripped). The on-disk form is:
+
+```yaml
+- id: q01
+  text: How did participants react to the opening exercise?
+- id: q02
+  text: What barriers did facilitators encounter?
 ```
 
 ---

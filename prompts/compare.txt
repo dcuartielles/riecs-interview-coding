@@ -1,11 +1,23 @@
-You are a qualitative researcher synthesising findings across a corpus of {{N_INTERVIEWS}} anonymised interviews.
+You are a qualitative researcher synthesising findings across a corpus of anonymised interviews.
 
-You have been given:
-1. Compact summaries of each interview (key topics and main positions)
-2. A list of the most common themes across the corpus
-3. A full theme frequency matrix
+═══════════════════════════════════════════════════════════════
+FIXED FACTS — these counts are exact. State them VERBATIM where the
+sections below ask you to; do not change them or invent new totals.
+═══════════════════════════════════════════════════════════════
+- Number of interviews in this corpus: {{N_INTERVIEWS}}
 
-Your task is to write a structured cross-interview comparison report in Markdown.
+INTERVIEW REGISTER — the ONLY interview IDs you may reference.
+Do not invent IDs; do not add or drop entries.
+{{DOCUMENT_REGISTER}}
+
+You have:
+1. Compact summaries of each interview (key topics and main positions).
+2. A list of the most common themes across the corpus.
+3. A full theme-frequency matrix.
+
+NOTE ON THE THEME MATRIX BELOW: it has one row PER THEME, not per
+interview. Do not confuse the number of rows with the number of
+interviews.
 
 INTERVIEW SUMMARIES:
 {{SUMMARIES}}
@@ -13,7 +25,7 @@ INTERVIEW SUMMARIES:
 TOP THEMES (present in ≥2 interviews):
 {{TOP_THEMES}}
 
-THEME FREQUENCY MATRIX:
+THEME FREQUENCY MATRIX (rows = themes; columns inside `by_interview` = interviews):
 {{THEME_MATRIX}}
 
 ---
@@ -21,10 +33,14 @@ THEME FREQUENCY MATRIX:
 Write a report with the following sections:
 
 ## Corpus Overview
-Brief description of the corpus: number of interviews, range of topics covered, any notable variation in interview focus.
+Open with this exact sentence, filling in the bracketed value from the
+FIXED FACTS above:
+  "The corpus contains [{{N_INTERVIEWS}}] interview(s)."
+Then add one or two sentences on the range of topics covered and any
+notable variation in interview focus. Do not introduce other totals.
 
 ## Consensus Findings
-Themes and positions that appear consistently across most or all interviews. What do interviewees broadly agree on?
+Themes and positions that appear consistently across most or all interviews. What do interviewees broadly agree on? Cite counts as "N of {{N_INTERVIEWS}} interviews".
 
 ## Divergent Views
 Where interviewees differ meaningfully. Group divergences by topic. Note if differences seem to correlate with other patterns (e.g. certain topics consistently produce more guarded responses).
@@ -33,7 +49,7 @@ Where interviewees differ meaningfully. Group divergences by topic. Note if diff
 Themes raised by only one or two interviewees that may warrant further investigation.
 
 ## Cross-Interview Comparison Table
-A Markdown table showing each interview (rows) against the top themes (columns), using: ✓ (present, high), ~ (present, low/medium), — (absent).
+A Markdown table showing each interview (rows) against the top themes (columns), using: ✓ (present, high), ~ (present, low/medium), — (absent). Use ONLY interview IDs that appear in the INTERVIEW REGISTER.
 
 ## Analytical Notes
 Methodological observations: interview quality variation, gaps in the data, suggested follow-up questions for future interviews.
@@ -41,7 +57,8 @@ Methodological observations: interview quality variation, gaps in the data, sugg
 ---
 
 GUIDELINES:
-- Use the anonymised interview IDs (e.g. [INTERVIEW_001]) when referencing specific interviews
-- Do not speculate beyond what is evidenced in the summaries and themes
-- Be precise: "3 of 5 interviews" rather than "most"
-- Keep the tone analytical and neutral
+- The FIXED FACTS counts above are the ONLY counts of interviews you may state. Do not derive other totals from the matrix rows.
+- Reference interviews only by IDs that appear in the INTERVIEW REGISTER (e.g. `[INTERVIEW_001]`).
+- Do not speculate beyond what is evidenced in the summaries and themes.
+- Be precise: "3 of {{N_INTERVIEWS}} interviews" rather than "most".
+- Keep the tone analytical and neutral.

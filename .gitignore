@@ -8,6 +8,8 @@ __pycache__/
 # Runtime directories — created on the target machine, never committed
 interviews/
 output/
+# UI-staged uploads (raw transcripts / workshop sheets — may contain PII)
+work/
 entities_CONFIDENTIAL/
 
 # OS

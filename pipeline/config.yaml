@@ -1,24 +1,36 @@
 # interview-analyser configuration
 # Edit before running main.py
 
+# Analysis mode — switched from the UI toggle or with --mode on the CLI.
+#   interviews : (default) thematic coding of interview transcripts against a labelbook
+#   workshop   : interrogate workshop description sheets against a list of questions
+mode: interviews
+
 models:
   anonymise: llama3.1:8b
   summarise:  llama3.1:8b
   themes:     llama3.1:8b
+  questions:  llama3.1:8b
   sentiment:  llama3.1:8b
-  compare:    llama3.1:8b
+  # Corpus comparison reasons over the whole corpus at once. The 8B model
+  # tends to confuse the matrix row count with the document count on long
+  # prompts; 70B is far better at faithful counting and citation. Revert to
+  # llama3.1:8b if 70B is too slow on your hardware.
+  compare:    llama3.1:70b
   # Override individual stages for higher quality, e.g.:
-  # themes:   llama3.1:70b
-  # compare:  llama3.1:70b
+  # themes:    llama3.1:70b
+  # questions: llama3.1:70b
 
 ollama:
   host: http://127.0.0.1:11434   # never change to an external host
   timeout_seconds: 300           # per LLM call; increase for slow hardware or long transcripts
 
 paths:
-  interviews: ./interviews        # directory of .txt transcript files
+  interviews: ./interviews        # directory of .txt transcript files (interviews mode)
   output:     ./output            # timestamped run subdirectories written here
-  codebook:   null                # optional: path to codebook.yaml for guided theme coding
+  codebook:   null                # optional: path to codebook.yaml for guided theme coding (interviews mode)
+  questions:  null                # path to questions.yaml — required in workshop mode
+  stakeholder_taxonomy: ./stakeholder_taxonomy.yaml  # canonical labels for demographics aggregation
 
 chunking:
   max_words_per_chunk: 4000       # split long transcripts into chunks of this size
@@ -27,8 +39,9 @@ chunking:
 analysis:
   language: en
   anonymise_dates: true           # replace specific dates; set false to keep relative references
-  min_theme_frequency: 2          # exclude themes mentioned fewer than N times
+  min_theme_frequency: 2          # exclude themes mentioned fewer than N times (interviews mode)
   sentiment_granularity: topic    # 'overall' or 'topic' (per key-topic sentiment breakdown)
+  anonymise_workshop_sheets: true # run the anonymise stage on workshop description sheets (workshop mode)
 
 gdpr:
   # Entity maps contain original PII — store separately from anonymised outputs

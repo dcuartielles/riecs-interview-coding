@@ -1,7 +1,14 @@
 # riecs-interview-coding
 
-Fully offline, GDPR-compliant interview analysis system.  
-Transcripts never leave the machine. All inference runs locally via [Ollama](https://ollama.com).
+Fully offline, GDPR-compliant qualitative analysis system.  
+Transcripts and workshop notes never leave the machine. All inference runs locally via [Ollama](https://ollama.com).
+
+The tool runs in one of two modes, switched from the **Analysis mode** toggle at the top of the UI:
+
+- **Interviews** — anonymise → summarise → thematic coding (optionally against a labelbook) → sentiment → cross-interview comparison. Tables and charts are organised by theme.
+- **Workshop templates** — anonymise (optional) → summarise → per-question coverage / sentiment / emerging themes → cross-document comparison. Inputs are workshop description sheets plus one or more text/Word files listing research questions; the labelbook block is hidden. Tables and charts are organised by question.
+
+Both modes share Stages 1, 2 and 5 of the pipeline. Mode B replaces thematic coding with a question-driven Stage 3 (`prompts/questions.txt` → `pipeline/questions.py`) and folds sentiment into that same stage.
 
 ---
 
@@ -11,48 +18,53 @@ Transcripts never leave the machine. All inference runs locally via [Ollama](htt
 flowchart TD
     subgraph IN["Input files (drag & drop in the UI)"]
         direction LR
-        TXT["📄 .txt\ntranscript"]
-        DOCX["📝 .docx\ntranscript"]
-        LB["📊 .xlsx / .csv / .yaml\nlabelbook (optional)"]
+        TXT["📄 .txt / .docx<br/>transcripts or<br/>workshop sheets"]
+        LB["📊 .xlsx / .csv / .yaml<br/>labelbook<br/>(interviews mode)"]
+        QS["❓ .txt / .docx<br/>question list<br/>(workshop mode)"]
     end
 
     subgraph BROWSER["Browser — localhost:8501"]
-        UI["Streamlit web app\napp.py\n\nProgress tab · Outcomes tab\nWord & HTML export"]
+        UI["Streamlit web app · app.py<br/>Mode toggle: Interviews ⇄ Workshop templates<br/>Progress tab · Outcomes tab · Word & HTML export"]
     end
 
     subgraph MACHINE["Local machine — fully air-gapped during processing"]
         direction TB
 
-        subgraph PIPELINE["Python pipeline"]
+        subgraph PIPELINE["Python pipeline (mode-aware)"]
             direction TB
-            P1["① Anonymise\nreplace PII with coded tokens"]
-            P2["② Summarise\nkey topics · positions · quotes"]
-            P3["③ Thematic coding\nmap to labelbook codes"]
-            P4["④ Sentiment & tone\noverall · per-topic breakdown"]
-            P5["⑤ Corpus comparison\ncross-interview synthesis"]
-            P1 --> P2 --> P3 --> P4 --> P5
+            P1["① Anonymise<br/>replace PII with coded tokens<br/>(optional in workshop mode)"]
+            P2["② Summarise<br/>key topics · positions · quotes"]
+            P3a["③ Thematic coding<br/>vs labelbook<br/>— interviews"]
+            P3b["③ Question coverage<br/>+ per-question sentiment<br/>— workshop"]
+            P3c["③b Demographics<br/>participants · gender · age<br/>· stakeholders · modality<br/>— workshop"]
+            P4["④ Sentiment & tone<br/>— interviews only"]
+            P5["⑤ Corpus comparison<br/>LLM narrative + code-built<br/>Per-Question Synthesis"]
+            P1 --> P2
+            P2 --> P3a --> P4 --> P5
+            P2 --> P3b --> P3c --> P5
         end
 
         subgraph OLLAMA["Ollama server — 127.0.0.1:11434"]
-            MODEL["LLM model on disk\ndefault: llama3.1:8b\n(~5 GB, runs on CPU or GPU)"]
+            MODEL["LLM models on disk<br/>llama3.1:8b for per-doc stages<br/>llama3.1:70b for corpus comparison"]
         end
 
         subgraph OUT["output / YYYY-MM-DD_HH-MM /"]
             direction LR
-            ANON["anonymised /\n*_anon.txt ✓ shareable"]
-            ENT["entities_CONFIDENTIAL /\n*_entities.json 🔒 PII — keep separate"]
-            ANA["analysis /\n*_summary.json\n*_themes.json\n*_sentiment.json"]
-            COR["corpus /\nthemes_matrix.json\ncomparison_report.md"]
+            ANON["anonymised /<br/>*_anon.txt ✓ shareable"]
+            ENT["entities_CONFIDENTIAL /<br/>*_entities.json 🔒 PII"]
+            ANA["analysis /<br/>*_summary.json<br/>*_themes.json (interviews)<br/>*_questions.json (workshop)<br/>*_demographics.json (workshop)<br/>*_sentiment.json (interviews)"]
+            COR["corpus /<br/>themes_matrix.json / questions_matrix.json<br/>comparison_report.md<br/>potential_duplicates.json (workshop)"]
+            META["workshops.yaml (workshop)<br/>.progress.txt<br/>checkpoint.json"]
         end
     end
 
-    REPORT["📄 Word report (.docx)\n📄 HTML report\ndownloaded from Outcomes tab"]
+    REPORT["📄 Word report (.docx)<br/>📄 HTML report<br/>downloaded from Outcomes tab"]
 
     IN -->|upload| BROWSER
     BROWSER -->|triggers| PIPELINE
-    PIPELINE <-->|"HTTP — localhost only\nno external calls"| OLLAMA
+    PIPELINE <-->|"HTTP — localhost only<br/>no external calls"| OLLAMA
     P1 --> ANON & ENT
-    P2 & P3 & P4 --> ANA
+    P2 & P3a & P3b & P3c & P4 --> ANA
     P5 --> COR
     OUT -->|rendered in| BROWSER
     BROWSER -->|download| REPORT
@@ -60,16 +72,17 @@ flowchart TD
 
 ### How data flows
 
-| Step | What happens | Where it goes |
-|---|---|---|
-| Upload | Transcript files copied to a temporary directory | Temp dir (deleted after run) |
-| Anonymise | PII replaced with `[PERSON_1]`, `[ORG_2]`, … | `anonymised/*_anon.txt` |
-| Entity map | Original values ↔ placeholders | `entities_CONFIDENTIAL/*_entities.json` 🔒 |
-| Summarise | Structured JSON: topics, positions, quotes | `analysis/*_summary.json` |
-| Themes | Codes mapped to labelbook (or open coding) | `analysis/*_themes.json` |
-| Sentiment | Tone, register, per-topic breakdown | `analysis/*_sentiment.json` |
-| Corpus | Cross-interview matrix + synthesis narrative | `corpus/` |
-| Export | Self-contained Word & HTML reports | Downloaded to your machine |
+| Step | Interviews mode | Workshop mode | Output |
+|---|---|---|---|
+| Upload | Transcripts + (optional) labelbook | Workshop sheets + question list | `work/<run>/…` (gitignored) |
+| Anonymise | Always | Optional checkbox | `anonymised/*_anon.txt` |
+| Entity map | Original values ↔ placeholders | Same | `entities_CONFIDENTIAL/*_entities.json` 🔒 |
+| Summarise | Structured JSON | Structured JSON | `analysis/*_summary.json` |
+| Stage 3 | Thematic coding (vs labelbook) | Per-question coverage + sentiment + emerging themes | `*_themes.json` / `*_questions.json` |
+| Stage 3b (workshop) | — | Demographics extraction | `*_demographics.json` |
+| Stage 4 (interviews) | Overall sentiment / register / per-topic tone | folded into stage 3 | `*_sentiment.json` |
+| Corpus | Theme matrix + LLM narrative | Question matrix + LLM narrative + **code-built Per-Question Synthesis** | `corpus/` |
+| Export | Word + HTML report | Word + HTML report (incl. Demographics + Caveats) | Downloaded |
 
 The entity maps contain original PII and must be stored on an **encrypted, access-controlled volume** separate from the anonymised outputs.
 
@@ -78,19 +91,138 @@ The entity maps contain original PII and must be stored on an **encrypted, acces
 ## Pipeline stages
 
 ### ① Anonymisation
-The LLM reads the full transcript and replaces all personally identifiable information (names, organisations, places, phone numbers, emails, identifying dates) with consistent coded placeholders. Long transcripts (> 4,000 words) are processed in overlapping chunks to keep placeholder numbering consistent. Output: `*_anon.txt` + `*_entities.json`.
+The LLM reads the full transcript and replaces all personally identifiable information (names, organisations, places, phone numbers, emails, identifying dates) with consistent coded placeholders. Long transcripts (> 4,000 words) are processed in overlapping chunks to keep placeholder numbering consistent. Output: `*_anon.txt` + `*_entities.json`. In workshop mode this stage is **optional** (`anonymise_workshop_sheets` checkbox in the UI / config flag).
 
 ### ② Structured summary
-Produces a JSON object with `interview_id`, `word_count`, `estimated_duration_min`, `key_topics[]`, `main_positions[]`, `notable_quotes[]`, and `methodological_notes`. Validated against `output-schema/interview_result.json`.
+Produces a JSON object with `interview_id`, `word_count`, `estimated_duration_min`, `key_topics[]`, `main_positions[]`, `notable_quotes[]`, and `methodological_notes`. Validated against `output-schema/interview_result.json`. Shared across both modes.
 
-### ③ Thematic coding
+### ③ Thematic coding (interviews mode)
 Maps transcript content to codes. If a labelbook is supplied, the model maps mentions to existing codes and may propose new ones. If no labelbook is provided, it performs open inductive coding. Output includes `code`, `label`, `description`, `frequency`, `supporting_quotes[]`, and `sub_themes[]` per theme.
 
-### ④ Sentiment and tone analysis
+### ③ Question coverage (workshop mode)
+Interrogates each workshop description sheet against the same fixed list of research questions. For every question the LLM returns a per-document record: `coverage` (`answered` / `partially_answered` / `not_answered`), a one-paragraph `answer`, 1–3 verbatim `supporting_quotes`, a per-question `sentiment` (positive / neutral / negative / mixed), and any `emerging_themes` it noticed in passing. Document-level `overall_tone` and `emotional_register` are also recorded — so workshop mode does **not** run a separate Stage 4. Output: `*_questions.json` (schema: `output-schema/workshop_result.json`).
+
+### ③b Demographics extraction (workshop mode)
+Pulls structured demographic facts from each sheet — `n_participants`, gender breakdown (Female / Male / Non-binary / Unspecified), `stakeholder_groups[]`, `modality` (`on_site` / `online` / `hybrid` / `unspecified`), and `age_buckets[]` (under_18, 18_24, …, 65_plus). The prompt insists on **null when not stated** — the LLM is never permitted to invent counts. Output: `*_demographics.json` (schema: `output-schema/demographics_result.json`).
+
+### ④ Sentiment and tone analysis (interviews mode only)
 Classifies overall tone (positive / neutral / negative / mixed), emotional register (formal / conversational / distressed / …), confidence score, and a per-topic sentiment breakdown with notable passages.
 
-### ⑤ Corpus comparison
-Runs once after all interviews are processed. Builds a theme-frequency matrix across interviews, identifies consensus and divergent positions, and writes a synthesis narrative in Markdown.
+### ⑤ Corpus comparison (both modes)
+Runs once after all per-document stages finish. Builds a theme- (interviews) or question- (workshop) frequency matrix across documents, identifies consensus and divergent positions, and writes a synthesis narrative in Markdown.
+
+The compare prompt is hardened against an issue the smaller LLMs exhibit on long structured prompts — confusing the **number of matrix rows** (e.g. 13 questions) with the **number of documents** (e.g. 42 workshops). Two countermeasures:
+
+- **FIXED FACTS block** — the prompt opens with explicit counts (number of source files, distinct workshop IDs, research questions) and instructs the model to copy them verbatim.
+- **DOCUMENT REGISTER** — every workshop_id and document_id the model is allowed to cite is listed; "never invent IDs" is in the instructions.
+
+The **Per-Question Synthesis** subsection is not written by the LLM at all in workshop mode — it is built deterministically in `pipeline/compare.py` from the `*_questions.json` files (real quotes, real workshop_ids, real coverage counts) and injected into the report before "Documents With Notable Gaps". See [Workshop mode](#workshop-mode) below for question kinds.
+
+---
+
+## Workshop mode
+
+Switch to **Workshop templates** in the **Analysis mode** toggle at the top of the UI (or pass `--mode workshop` on the CLI). The interviews-mode labelbook is replaced by a list of research questions; the rest of the UI swaps accordingly.
+
+### Workshop IDs and the document register
+
+Each uploaded file gets a stable identifier — `workshop_01`, `workshop_02`, … — assigned in upload order. The mapping is persisted as `<run_dir>/workshops.yaml`, so resumed runs and CLI rerouns keep the same IDs. Workshop IDs appear:
+
+- next to each filename in the right-column progress list,
+- as a dedicated column in the Files Evaluated table,
+- as the y-axis of the coverage matrix,
+- in the DOCUMENT REGISTER block of the compare prompt (so the LLM can only cite real IDs),
+- in the in-code Per-Question Synthesis citations.
+
+If the original filenames are dated (e.g. `01102025_WSDT_IBE_Spanish workshop.docx`) the workshop_NN is **not** chronological — the Caveats section calls this out explicitly so readers cross-reference dates from filenames if order matters.
+
+### Potential-duplicate detection
+
+After all per-document stages finish, the UI clusters filenames by **token-set Jaccard similarity** (≥ 0.70 by default) to flag possible duplicates — e.g. `Workshop_5_part_a.docx` and `Workshop_5_part_b.docx`. The normaliser strips stopwords (`workshop`, `draft`, `vN`, common years) and single-letter part markers, and keeps digits because the workshop number is usually the discriminator. Clusters are saved to `corpus/potential_duplicates.json` and fed into the compare prompt as a `{{POTENTIAL_DUPLICATES}}` block; the LLM gets a section instruction to verify each candidate against the per-doc summaries (likely / uncertain / unlikely) without asserting duplication on its own. The same list is rendered in the HTML/DOCX reports as a "Potential Duplicate Workshops" block above the executive summary.
+
+### Question file format
+
+Plain text or Word, one question per non-empty line. Numeric prefixes (`Q1:`, `1.`, `1)`) are stripped. Multiple uploaded files are concatenated in upload order; case-insensitive whitespace-collapsed duplicates are dropped. Mark a corpus-aggregate question with an inline `[aggregate]` token:
+
+```
+[aggregate] How many participants from each stakeholder group?
+What are the strengths of the workshop method?
+How can future workshops be improved?
+[aggregate] Age groups per workshop?
+```
+
+The parsed list is persisted to `<work>/questions.yaml`:
+
+```yaml
+- id: q01
+  text: How many participants from each stakeholder group?
+  kind: aggregate
+- id: q02
+  text: What are the strengths of the workshop method?
+  kind: per_document
+- id: q03
+  text: How can future workshops be improved?
+  kind: per_document
+- id: q04
+  text: Age groups per workshop?
+  kind: aggregate
+  # Optional override of the default Demographics pointer:
+  # pointer: "See the Demographics → Age distribution chart."
+```
+
+`kind` is honoured by the Per-Question Synthesis renderer:
+
+- **`per_document`** — coverage counts, up to three real answer excerpts (preferring fully answered), sentiment distribution, and a list of documents that didn't address the question.
+- **`aggregate`** — a one-line pointer to the Demographics section (or the custom `pointer:` you supply). No paraphrase, no quote — the LLM is not consulted for this question's subsection.
+
+### Stakeholder taxonomy
+
+`stakeholder_taxonomy.yaml` at the project root maps canonical group labels to the alias variants the LLM might extract from messy workshop sheets. For instance:
+
+```yaml
+- canonical: Policymakers & government
+  aliases:
+    - policymakers
+    - policy makers
+    - policy-makers
+    - city administration
+    - local government
+    - municipality
+```
+
+The demographics aggregator (in `app.py`) consults this file before falling back to its lightweight heuristic (lowercase + strip trailing 's'). Unmapped labels keep their original casing. Quote aliases that contain colons (`"others: students"`) so YAML doesn't parse them as `{key: value}` mappings.
+
+### Demographics section in the report
+
+Workshop-mode reports include a **Demographics** section with four sub-blocks:
+
+- **Participants & modality** — per-workshop participant count + on-site/online/hybrid, with a row total.
+- **Gender distribution** — per-workshop %F / %M / %NB / %U + N, with a row total.
+- **Stakeholder groups** — corpus-wide totals after taxonomy normalisation.
+- **Age distribution** — horizontal bar chart of corpus-wide age buckets.
+
+If `*_demographics.json` files don't exist (older runs), the section is omitted.
+
+### Caveats section
+
+A data-driven **Caveats** section sits right after the Executive Summary on workshop reports. It is computed from the run — not a generic disclaimer — and surfaces, e.g.:
+
+- The file count vs distinct-workshop count.
+- The percentage of participants with reported gender / age (often well below 100% because the source sheets don't always state it).
+- Workshops with `n_participants` null because the description didn't state a count.
+- How many filename-similarity clusters were flagged for review.
+- The number of workshop × question cells with `not_answered` coverage.
+- The model used for each stage (corpus comparison defaults to `llama3.1:70b`).
+
+### Coverage matrix and charts
+
+- **Transposed coverage matrix** — rows = workshop IDs (sorted), columns = `q01..qNN`. Cells use a traffic-light palette: green (`answered`), yellow (`partially_answered`), red (`not_answered`). The cell also carries a glyph (`✓` / `½` / `—`) so the table is legible in print and for colour-blind viewers. A legend and Question key follow the table.
+- **Coverage chart** — horizontal bar chart of total coverage score per question, labelled with `q01..qNN` (full text is in the Question key).
+- **Co-occurrence diagram** — questions on a ring, edges where they share documents. Node sizes are min/max-normalised to a fixed point² range so corpus size doesn't blow them up, and labels are pushed to a larger radius so they never overlap nodes.
+
+### Loading a previous run
+
+The **Outcomes** tab shows a "Load a previous run" dropdown when no run is active in the current session. Every directory under `output/` that contains `corpus/comparison_report.md` is listed with its mode and document count; clicking **Load** re-hydrates the per-doc JSONs, matrix, report, duplicates list and workshop_id map so the in-app Outcomes view + downloadable reports work exactly as they did for an in-session run.
 
 ---
 
@@ -226,20 +358,30 @@ Then disable all network adapters (Wi-Fi + Ethernet) in System Settings / Device
 Edit `config.yaml` in the install directory before running:
 
 ```yaml
+mode: interviews                  # or 'workshop' — also switchable from the UI
+
 models:
-  anonymise: llama3.1:8b
-  summarise:  llama3.1:8b
-  themes:     llama3.1:8b   # upgrade to llama3.1:70b for richer coding
-  sentiment:  llama3.1:8b
-  compare:    llama3.1:8b   # upgrade to llama3.1:70b for better synthesis
+  anonymise:    llama3.1:8b
+  summarise:    llama3.1:8b
+  themes:       llama3.1:8b       # interviews mode
+  questions:    llama3.1:8b       # workshop mode
+  sentiment:    llama3.1:8b       # interviews mode
+  # Corpus comparison sees the full matrix at once. The 8B model tends to
+  # confuse the number of matrix rows with the document count on long
+  # prompts; 70B is far better at faithful counting / citation. Revert to
+  # llama3.1:8b if 70B is too slow on your hardware.
+  compare:      llama3.1:70b
 
 ollama:
   host: http://127.0.0.1:11434   # never point to an external host
   timeout_seconds: 300            # increase for slow hardware or very long transcripts
 
 paths:
-  interviews: ./interviews        # .txt and .docx transcripts go here (CLI mode)
+  interviews: ./interviews                 # .txt / .docx transcripts (CLI mode, interviews)
   output:     ./output
+  codebook:   null                         # path to labelbook.yaml (interviews mode), or null
+  questions:  null                         # path to questions.yaml (workshop mode, required)
+  stakeholder_taxonomy: ./stakeholder_taxonomy.yaml   # see Workshop mode above
 
 chunking:
   max_words_per_chunk: 4000       # split transcripts longer than this
@@ -247,8 +389,9 @@ chunking:
 
 analysis:
   language: en
-  anonymise_dates: true           # set false to keep relative time references
-  min_theme_frequency: 2
+  anonymise_dates: true                    # set false to keep relative time references
+  min_theme_frequency: 2                   # interviews mode
+  anonymise_workshop_sheets: true          # workshop mode — set false to skip stage 1
 
 gdpr:
   entities_subdir: entities_CONFIDENTIAL
@@ -272,20 +415,32 @@ Each pipeline stage can use a **different model** — useful for running fast 8B
 
 Then open **http://localhost:8501** in any browser.
 
-**Progress tab**
+The top of the page carries an **Analysis mode** toggle — switching between *Interviews* and *Workshop templates* swaps the left-column blocks. The toggle is disabled while a run is in progress, and a resume button preserves the mode of the original run.
+
+**Progress tab — interviews mode**
 
 | Left column | Right column |
 |---|---|
-| Upload `.txt` or `.docx` transcripts (multiple files) | Live progress bar and step-by-step status log |
-| Upload `.xlsx`, `.csv`, or `.yaml` labelbook (optional) | Completes with "Analysis complete" notice |
-| Map labelbook columns (auto-detected, adjustable) | |
-| Click **Run Analysis** | |
+| Upload `.txt` or `.docx` transcripts (multiple files) | Live progress bar with per-stage updates |
+| Upload `.xlsx`, `.csv`, or `.yaml` labelbook (optional) | Workshop_NN (workshop mode) next to each filename in the queue |
+| Map labelbook columns (auto-detected, adjustable) | "Stop after this document" pauses to a resumable checkpoint |
+| Click **Run Analysis** | When done: a "Processing log" expander stays open showing per-stage timings for every document |
 
-**Outcomes tab** (appears after a run)
+**Progress tab — workshop mode**
 
-- **Download Word report (.docx)** — structured document with executive summary, theme matrix, and per-interview sections; ready to share or print
+| Left column | Right column |
+|---|---|
+| Upload workshop description sheets (`.txt`/`.docx`, multiple) | Same right-column behaviour as interviews mode |
+| Upload one or more question files (`.txt`/`.docx`, multiple) | |
+| Toggle **Anonymise workshop sheets before analysis** (default ON) | |
+| Click **Run Analysis** (disabled until ≥ 1 sheet and ≥ 1 question are parsed) | |
+
+**Outcomes tab** (appears after a run, or via the "Load a previous run" dropdown)
+
+- **Download Word report (.docx)** — structured document with executive summary, caveats, coverage matrix, charts, demographics tables, and per-document sections; ready to share or print
 - **Download HTML report** — self-contained single file; open in any browser and use File › Print › Save as PDF
-- **Report highlights** — scrollable pane showing the full content inline: executive summary, theme matrix, and per-interview cards with summary, themes (frequency badges), sentiment, and notable quotes
+- **Report highlights** — scrollable pane showing the full content inline: executive summary, caveats, coverage matrix, frequency + co-occurrence charts (workshop), demographics (workshop), and per-document cards with summary, themes / questions, and notable quotes
+- **Load a previous run** — dropdown when no live run is active; picks up any directory under `output/` that has a finished `corpus/comparison_report.md`
 
 ---
 
@@ -300,21 +455,56 @@ Then open **http://localhost:8501** in any browser.
 ```
 
 ```
-usage: main.py [-h] [--interview PATH] [--compare-only] [--run-dir PATH]
-               [--stage {anonymise,summarise,themes,sentiment}] [--config PATH]
+usage: main.py [-h] [--interview PATH] [--mode {interviews,workshop}]
+               [--questions PATH] [--compare-only] [--run-dir PATH]
+               [--stage {anonymise,summarise,themes,questions,demographics,sentiment}]
+               [--config PATH]
 
 examples:
-  python main.py                            process all .txt files in interviews/
-  python main.py --interview my.txt         process a single transcript
-  python main.py --stage anonymise          run only anonymisation
-  python main.py --compare-only             re-run corpus comparison on an existing run
+  # Interviews — process all .txt files in interviews/
+  python main.py
+
+  # Single transcript
+  python main.py --interview my.txt
+
+  # Workshop mode — full pipeline against a questions file
+  python main.py --mode workshop --questions ./questions.yaml
+
+  # Re-run only one stage against an existing run dir (uses the anonymised
+  # files already on disk; original raw inputs are not needed):
+  python main.py --stage demographics --mode workshop \
+    --run-dir output/2026-05-28_11-52
+
+  # Re-run only the corpus comparison (cheap; no per-doc reprocessing):
+  python main.py --compare-only --mode workshop \
+    --run-dir output/2026-05-28_11-52 \
+    --questions output/2026-05-28_11-52/questions.yaml
 ```
 
-Place `.txt` or `.docx` transcript files in the `interviews/` directory (or pass `--interview` for a single file). The labelbook path can be set in `config.yaml` under `paths.codebook`.
+### Live progress for detached / scripted runs
+
+When the CLI is launched detached (no TTY, output redirected to a file) Rich's
+in-place progress bar is suppressed. `pipeline/main.py` also writes a one-line
+plain-text status to `<run_dir>/.progress.txt` on every ~40-token tick, so
+`tail -f` becomes a live progress meter:
+
+```
+$ tail -f output/2026-05-28_11-52/.progress.txt
+Corpus comparison:  37%  (3,200 tokens · 218s elapsed · est. 10m 08s)
+```
+
+Place transcripts (interviews mode) in the `interviews/` directory or pass
+`--interview` for a single file. In workshop mode the file glob defaults to
+the same path; when `--stage <s>` is supplied together with `--run-dir <d>`,
+the CLI iterates over `<d>/anonymised/*_anon.txt` instead — so individual
+stages can be re-run after the fact on a UI-created run dir without keeping
+the original raw inputs.
 
 ---
 
 ## Output directory structure
+
+**Interviews mode**
 
 ```
 output/
@@ -322,20 +512,44 @@ output/
     ├── anonymised/
     │   ├── interview_001_anon.txt      ← distributable
     │   └── interview_002_anon.txt
-    ├── entities_CONFIDENTIAL/         ← contains original PII — keep separate 🔒
+    ├── entities_CONFIDENTIAL/          ← contains original PII — keep separate 🔒
     │   ├── interview_001_entities.json
     │   └── interview_002_entities.json
     ├── analysis/
     │   ├── interview_001_summary.json
     │   ├── interview_001_themes.json
     │   ├── interview_001_sentiment.json
-    │   ├── interview_002_summary.json
-    │   ├── interview_002_themes.json
-    │   └── interview_002_sentiment.json
+    │   ├── …
     ├── corpus/
     │   ├── themes_matrix.json          ← cross-interview frequency matrix
     │   └── comparison_report.md        ← synthesis narrative
+    ├── checkpoint.json                 ← present only during a partial / resumable run
+    ├── .progress.txt                   ← live progress line (tail -f friendly)
     └── run_log.jsonl                   ← stage timings and token counts (no PII)
+```
+
+**Workshop mode**
+
+```
+output/
+└── 2026-05-28_11-52/
+    ├── anonymised/                     ← present only if anonymise_workshop_sheets=true
+    │   └── workshop_NN_anon.txt
+    ├── entities_CONFIDENTIAL/          ← matching entity maps 🔒
+    │   └── workshop_NN_entities.json
+    ├── analysis/
+    │   ├── *_summary.json              ← shared with interviews mode
+    │   ├── *_questions.json            ← per-doc question coverage + sentiment + quotes
+    │   └── *_demographics.json         ← per-doc demographic facts
+    ├── corpus/
+    │   ├── questions_matrix.json       ← per-question coverage + sentiment + entries
+    │   ├── potential_duplicates.json   ← filename-similarity clusters flagged for review
+    │   └── comparison_report.md        ← LLM narrative + code-built Per-Question Synthesis
+    ├── workshops.yaml                  ← file_stem → workshop_NN mapping
+    ├── questions.yaml                  ← (optional) tagged questions with `kind:` field
+    ├── checkpoint.json
+    ├── .progress.txt
+    └── run_log.jsonl
 ```
 
 ---
@@ -355,36 +569,48 @@ output/
 ## Repository layout
 
 ```
-spec/                        ← this repository
-├── app.py                   ← Streamlit web UI
+riecs-interview-coding/                  ← this repository
+├── app.py                               ← Streamlit web UI
 ├── pipeline/
-│   ├── main.py              ← CLI entry point
+│   ├── main.py                          ← CLI entry point
 │   ├── anonymise.py
-│   ├── analyse.py           ← summarise, extract_themes, analyse_sentiment
-│   ├── compare.py
-│   ├── verify.py            ← pre-flight check (run before air-gapping)
+│   ├── analyse.py                       ← summarise, extract_themes, analyse_sentiment
+│   ├── questions.py                     ← workshop stage 3 — analyse_questions
+│   ├── demographics.py                  ← workshop stage 3b — extract_demographics
+│   ├── compare.py                       ← matrix builders + corpus comparison +
+│   │                                       code-built Per-Question Synthesis
+│   ├── charts.py                        ← coverage / co-occurrence diagrams
+│   ├── timing.py                        ← per-stage time estimates
+│   ├── verify.py                        ← pre-flight check (run before air-gapping)
 │   ├── config.yaml
 │   └── requirements.txt
-├── prompts/                 ← LLM prompt templates (one per stage)
+├── prompts/                             ← LLM prompt templates (one per stage)
 │   ├── anonymise.txt
 │   ├── summary.txt
-│   ├── themes.txt
-│   ├── sentiment.txt
-│   └── compare.txt
-├── output-schema/           ← JSON schemas for pipeline output validation
+│   ├── themes.txt                       ← interviews mode
+│   ├── sentiment.txt                    ← interviews mode
+│   ├── questions.txt                    ← workshop mode — stage 3
+│   ├── demographics.txt                 ← workshop mode — stage 3b
+│   ├── compare.txt                      ← corpus comparison — interviews
+│   └── compare_workshop.txt             ← corpus comparison — workshop, with
+│                                          FIXED FACTS + DOCUMENT REGISTER
+├── output-schema/                       ← JSON schemas for pipeline output validation
 │   ├── interview_result.json
-│   └── corpus_result.json
+│   ├── corpus_result.json
+│   ├── workshop_result.json             ← per-doc questions stage
+│   └── demographics_result.json         ← per-doc demographics stage
+├── stakeholder_taxonomy.yaml            ← canonical labels for demographics aggregation
 ├── assets/
 │   ├── riecs-glyph.png
 │   └── favicon.ico
 ├── .streamlit/
-│   └── config.toml          ← Streamlit theme (RIECS colours)
+│   └── config.toml                      ← Streamlit theme (RIECS colours)
 ├── install/
 │   ├── install-mac.sh
 │   └── install-windows.ps1
-├── 01-architecture.md       ← detailed component spec
-├── 00-hardware-scenarios.md ← procurement benchmarks and model selection guide
-└── Benchmark.md             ← measured Ollama benchmark (Mac mini M4 Pro 64 GB)
+├── 01-architecture.md                   ← detailed component spec
+├── 00-hardware-scenarios.md             ← procurement benchmarks and model selection guide
+└── Benchmark.md                         ← measured Ollama benchmark (Mac mini M4 Pro 64 GB)
 ```
 
 ---

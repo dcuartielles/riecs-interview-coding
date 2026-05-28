@@ -27,11 +27,17 @@ _STEEL = "#648a9e"
 _EDGE = "#a9c0d2"
 _CREAM = "#f5f2ea"
 
-_FREQ_SCORE = {"high": 3, "medium": 2, "low": 1}
+_FREQ_SCORE = {
+    # interviews-mode theme frequencies
+    "high": 3, "medium": 2, "low": 1,
+    # workshop-mode question coverage (mapped onto the same ordinal scale so
+    # the chart and report code can stay shared)
+    "answered": 3, "partially_answered": 2, "partial": 2, "not_answered": 0,
+}
 
 
 def _relevance(by_interview: dict) -> int:
-    """Sum the ordinal frequency ratings of a theme across all interviews."""
+    """Sum the ordinal frequency/coverage ratings of a theme or question."""
     return sum(_FREQ_SCORE.get(str(v).strip().lower(), 0)
                for v in by_interview.values())
 
@@ -44,11 +50,25 @@ def _fig_to_png(fig) -> bytes:
     return buf.getvalue()
 
 
-def theme_frequency_chart(matrix_codes: dict) -> bytes | None:
+def theme_frequency_chart(
+    matrix_codes: dict,
+    *,
+    title: str = "Theme relevance",
+    xlabel: str = "Relevance score  (high = 3, medium = 2, low = 1, "
+                  "summed across interviews)",
+    item_noun: str = "interview",
+    label_map: dict | None = None,
+) -> bytes | None:
     """Horizontal bar chart of themes ranked by relevance score.
 
     `matrix_codes` is the `codes` mapping from the corpus themes matrix.
-    Returns PNG bytes, or None if there is nothing to plot.
+    Returns PNG bytes, or None if there is nothing to plot. The keyword
+    arguments let the report relabel the chart for workshop mode
+    ("Question coverage", "Documents", etc.) without forking the function.
+
+    `label_map` (optional) maps `code -> display_label` — workshop mode passes
+    `{code: code}` so the y-axis shows compact qids (q01..qNN) instead of the
+    full question text, which would otherwise crowd the bars.
     """
     if not matrix_codes:
         return None
@@ -56,13 +76,17 @@ def theme_frequency_chart(matrix_codes: dict) -> bytes | None:
     items = []
     for code, info in matrix_codes.items():
         by_iv = info.get("by_interview", {}) or {}
-        label = info.get("label") or code
+        if label_map is not None:
+            label = label_map.get(code, info.get("label") or code)
+        else:
+            label = info.get("label") or code
         items.append((label, _relevance(by_iv), len(by_iv)))
     if not items:
         return None
 
     items.sort(key=lambda x: x[1])  # ascending: highest bar ends up on top
-    labels = [textwrap.fill(i[0], 28) for i in items]
+    # Short labels (e.g. q01) don't need wrapping; long ones still wrap.
+    labels = [i[0] if len(i[0]) <= 5 else textwrap.fill(i[0], 28) for i in items]
     scores = [i[1] for i in items]
     counts = [i[2] for i in items]
 
@@ -72,13 +96,12 @@ def theme_frequency_chart(matrix_codes: dict) -> bytes | None:
     for bar, score, count in zip(bars, scores, counts):
         ax.text(bar.get_width() + max(scores) * 0.02,
                 bar.get_y() + bar.get_height() / 2,
-                f"{score}  ·  {count} interview{'s' if count != 1 else ''}",
+                f"{score}  ·  {count} {item_noun}{'s' if count != 1 else ''}",
                 va="center", ha="left", fontsize=8, color=_NAVY)
 
     ax.set_xlim(0, max(scores) * 1.28 if scores else 1)
-    ax.set_xlabel("Relevance score  (high = 3, medium = 2, low = 1, "
-                  "summed across interviews)", fontsize=9, color=_NAVY)
-    ax.set_title("Theme relevance", fontsize=13, color=_NAVY,
+    ax.set_xlabel(xlabel, fontsize=9, color=_NAVY)
+    ax.set_title(title, fontsize=13, color=_NAVY,
                  fontweight="bold", pad=12)
     ax.tick_params(axis="y", labelsize=9)
     for spine in ("top", "right"):
@@ -88,12 +111,21 @@ def theme_frequency_chart(matrix_codes: dict) -> bytes | None:
     return _fig_to_png(fig)
 
 
-def theme_cooccurrence_chart(matrix_codes: dict) -> bytes | None:
+def theme_cooccurrence_chart(
+    matrix_codes: dict,
+    *,
+    title: str = "Theme co-occurrence  (shared interviews)",
+    label_map: dict | None = None,
+) -> bytes | None:
     """Co-occurrence map: themes on a circle, linked when they share interviews.
 
     Node size scales with relevance; edge width scales with the number of
     interviews in which both themes appear. Returns PNG bytes, or None if
     there are fewer than two themes.
+
+    `label_map` (optional) supplies the display label per code (e.g. workshop
+    mode passes `{code: code}` so nodes are labelled q01..qNN rather than
+    the wrapped multi-line question text that would otherwise collide).
     """
     if not matrix_codes or len(matrix_codes) < 2:
         return None
@@ -117,30 +149,50 @@ def theme_cooccurrence_chart(matrix_codes: dict) -> bytes | None:
             if weight > 0:
                 edges.append((ci, cj, weight))
 
-    fig, ax = plt.subplots(figsize=(8, 8))
+    # Min/max-normalise node sizes to a fixed point² range — the raw
+    # `relevance` scales linearly with corpus size, so an interviews run with
+    # 5 docs and a workshop run with 42 docs would otherwise produce nodes
+    # of wildly different absolute sizes (overlapping or invisible).
+    relevances = [_relevance(info.get("by_interview", {}) or {})
+                  for _, info in codes]
+    r_min, r_max = min(relevances), max(relevances)
+    node_lo, node_hi = 320, 1100  # point²; tuned to leave space for labels
+    def _node_size(r: float) -> float:
+        if r_max == r_min:
+            return (node_lo + node_hi) / 2
+        return node_lo + (node_hi - node_lo) * (r - r_min) / (r_max - r_min)
+
+    fig, ax = plt.subplots(figsize=(9.5, 9.5))
     max_w = max((w for *_, w in edges), default=1)
     for ci, cj, weight in edges:
         (x1, y1), (x2, y2) = pos[ci], pos[cj]
         ax.plot([x1, x2], [y1, y2], color=_EDGE,
                 linewidth=1.0 + 4.0 * weight / max_w, alpha=0.75, zorder=1)
 
+    # Labels sit on a larger ring than the nodes so they never overlap.
+    label_radius = 1.45
     for code, info in codes:
         x, y = pos[code]
         rel = _relevance(info.get("by_interview", {}) or {})
-        ax.scatter([x], [y], s=420 + 240 * rel, color=_TEAL,
+        ax.scatter([x], [y], s=_node_size(rel), color=_TEAL,
                    edgecolors="white", linewidths=1.5, zorder=2)
-        label = textwrap.fill(info.get("label") or code, 18)
+        if label_map is not None:
+            label = label_map.get(code, info.get("label") or code)
+        else:
+            label = info.get("label") or code
+        if len(label) > 8:
+            label = textwrap.fill(label, 18)
         ax.annotate(
-            label, (x, y), (x * 1.22, y * 1.22),
-            fontsize=8.5, color=_NAVY, zorder=3,
+            label, (x, y), (x * label_radius, y * label_radius),
+            fontsize=10, color=_NAVY, zorder=3, fontweight="600",
             ha="left" if x > 0.05 else ("right" if x < -0.05 else "center"),
             va="bottom" if y > 0.05 else ("top" if y < -0.05 else "center"),
         )
 
-    ax.set_title("Theme co-occurrence  (shared interviews)", fontsize=13,
+    ax.set_title(title, fontsize=13,
                  color=_NAVY, fontweight="bold", pad=14)
-    ax.set_xlim(-1.7, 1.7)
-    ax.set_ylim(-1.7, 1.7)
+    ax.set_xlim(-1.85, 1.85)
+    ax.set_ylim(-1.85, 1.85)
     ax.set_aspect("equal")
     ax.axis("off")
     return _fig_to_png(fig)

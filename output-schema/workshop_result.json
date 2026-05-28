@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "WorkshopAnalysisResult",
+  "description": "Per-document output of the workshop questions stage",
+  "type": "object",
+  "properties": {
+    "document_id":        { "type": "string" },
+    "overall_tone":       { "type": "string", "enum": ["positive", "neutral", "negative", "mixed"] },
+    "emotional_register": { "type": "string" },
+    "questions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "question_id":   { "type": "string" },
+          "question_text": { "type": "string" },
+          "coverage":      { "type": "string", "enum": ["answered", "partially_answered", "not_answered"] },
+          "answer":        { "type": "string" },
+          "supporting_quotes": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "sentiment":     { "type": "string", "enum": ["positive", "neutral", "negative", "mixed"] },
+          "emerging_themes": {
+            "type": "array",
+            "items": { "type": "string" }
+          }
+        },
+        "required": ["question_id", "question_text", "coverage", "answer", "supporting_quotes", "sentiment", "emerging_themes"]
+      }
+    },
+    "cross_question_notes": { "type": ["string", "null"] }
+  },
+  "required": ["document_id", "questions"]
+}

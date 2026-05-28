@@ -1,0 +1,91 @@
+# Stakeholder taxonomy for the demographics aggregator.
+#
+# When demographics are aggregated across workshops, each raw group label
+# from a per-document `*_demographics.json` is looked up here (case- and
+# whitespace-insensitive). If it matches an alias, the canonical label is
+# used in the report; otherwise the raw label is kept (lightly normalised).
+#
+# Canonical labels are the ones that appear in the final tables — choose
+# wording you want the researcher to see. Aliases should cover every variant
+# you've actually observed (run the project's smoke-test summariser to
+# enumerate untouched labels).
+#
+# Add or rearrange entries freely; the loader is tolerant.
+
+- canonical: Citizens & practitioners
+  aliases:
+    - citizens
+    - citizens/practitioners
+    - citizens / practitioners
+    - citizens/teachers - primary+secondary education
+    - practitioners
+
+- canonical: Researchers & scientists
+  aliases:
+    - researchers
+    - researchers & scientists
+    - scientists
+    - academics
+
+- canonical: Policymakers & government
+  aliases:
+    - policymakers
+    - policy makers
+    - policy-makers
+    - city administration
+    - local government
+    - municipality
+    - government
+
+- canonical: Industry & technology providers
+  aliases:
+    - industry
+    - companies
+    - technology providers
+    - tech providers
+    - private sector
+
+- canonical: NGOs & civil society
+  aliases:
+    - ngos
+    - ngos/foundations
+    - ngos / civil society organisations
+    - civil society
+    - civil society organisations
+    - foundations
+    - non-profit
+    - non-profits
+
+- canonical: Citizen science networks
+  aliases:
+    - citizen science networks
+    - citizen science network
+    - cs networks
+
+- canonical: Students
+  aliases:
+    - students
+    - "others: students"     # quoted — YAML would otherwise parse the colon as a mapping
+    - student
+    - pupils
+
+- canonical: Education systems
+  aliases:
+    - education systems
+    - education system
+    - schools
+    - teachers
+    - educators
+
+- canonical: Research infrastructures
+  aliases:
+    - other eu ris
+    - eu research infrastructures
+    - research infrastructures
+    - ris
+
+- canonical: Other
+  aliases:
+    - others
+    - other
+    - unspecified

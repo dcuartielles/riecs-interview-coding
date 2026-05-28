@@ -58,7 +58,10 @@ def main():
     # 5. Prompt files present
     from pathlib import Path
     base = Path(__file__).parent
-    for prompt in ["anonymise", "summary", "themes", "sentiment", "compare"]:
+    for prompt in [
+        "anonymise", "summary", "themes", "sentiment", "compare",
+        "questions", "compare_workshop",  # workshop mode
+    ]:
         p = base.parent / "prompts" / f"{prompt}.txt"
         all_ok &= check(f"Prompt file: {prompt}.txt", p.exists())
 
